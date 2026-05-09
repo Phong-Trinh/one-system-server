@@ -1,0 +1,7 @@
+server:
+  port: "8080"
+
+mongodb:
+  # Local MongoDB instance
+  uri: "mongodb://localhost:27017"
+  database: "one_system"
