@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneSystem | Bảng điều khiển Bếp trưởng</title>
+    <link rel="stylesheet" href="styles.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🍳</span>
+                <h2>OneSystem</h2>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-target="item-section">
+                    <span class="nav-icon">📦</span> Danh mục Nguyên liệu
+                </button>
+                <button class="nav-item" data-target="wizard-section">
+                    <span class="nav-icon">✨</span> Tạo Món Mới (Workflow)
+                </button>
+                <button class="nav-item" data-target="production-section">
+                    <span class="nav-icon">🔥</span> Lệnh Sản Xuất
+                </button>
+                <button class="nav-item" data-target="machine-section">
+                    <span class="nav-icon">⚙️</span> Quản lý Thiết bị
+                </button>
+                <button class="nav-item" data-target="org-section">
+                    <span class="nav-icon">🏢</span> Cấu hình Hệ thống
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="header-left">
+                    <h1>Không gian Bếp trưởng</h1>
+                    <div class="node-selector-box">
+                        <label for="globalNodeSelect">📍 Chi nhánh:</label>
+                        <select id="globalNodeSelect" class="node-select-inline"
+                            onchange="switchNodeContext(this.value)">
+                            <option value="">Đang tải...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="api-status">
+                    <span class="status-indicator"></span>
+                    API: localhost:8080
+                </div>
+            </header>
+
+            <div class="content-sections">
+                <!-- Item Section -->
+                <section id="item-section" class="section-card active">
+                    <div class="section-header">
+                        <h2>Quản lý Nguyên Liệu</h2>
+                        <p>Tạo mới các nguyên liệu thô để sử dụng trong quy trình sản xuất.</p>
+                    </div>
+
+                    <form id="itemForm" class="glass-form">
+                        <div class="form-group">
+                            <label for="itemName">Tên (Vd: Vỏ bánh burger)</label>
+                            <input type="text" id="itemName" placeholder="Nhập tên" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="itemSku">Mã SKU (Tùy chọn)</label>
+                            <input type="text" id="itemSku" placeholder="Vd: BUN-001">
+                        </div>
+                        <div class="form-group">
+                            <label for="itemType">Loại</label>
+                            <select id="itemType" class="select-input" required="">
+                                <option value="RAW_MATERIAL" selected>Nguyên liệu thô (Raw Material)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="itemBaseUnit">Đơn vị cơ sở (Vd: cái, gram, ml)</label>
+                            <input type="text" id="itemBaseUnit" placeholder="Vd: cái" required>
+                        </div>
+
+                        <button type="submit" class="btn-primary" id="itemSubmitBtn">Tạo mới</button>
+                    </form>
+                    <div id="itemResult" class="result-box"></div>
+
+                    <!-- Bảng danh sách quản lý Item -->
+                    <div class="item-manager-list">
+                        <div class="list-header">
+                            <h3>Danh sách Nguyên liệu / Sản phẩm</h3>
+                            <div class="search-box">
+                                <input type="text" id="itemSearchInput" placeholder="Tìm kiếm tên hoặc SKU...">
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="itemsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Tên</th>
+                                        <th>SKU</th>
+                                        <th>Loại</th>
+                                        <th>Đơn vị</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="itemsTableBody">
+                                    <!-- Dữ liệu sẽ đổ vào đây -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Recipe (BOM) Section (HIDDEN - Now in Wizard) -->
+                <section id="recipe-section" class="section-card" style="display: none;">
+                    <div class="section-header">
+                        <h2>Định nghĩa Nguyên Liệu</h2>
+                        <p>Những nguyên liệu nào cần thiết cho món ăn của bạn?</p>
+                    </div>
+
+                    <form id="bomForm" class="glass-form">
+                        <div class="form-group">
+                            <label for="outputItemId">Thành phẩm (Chọn từ danh sách)</label>
+                            <select id="outputItemId" class="select-input" required>
+                                <option value="" disabled selected>Đang tải danh sách...</option>
+                            </select>
+                        </div>
+
+                        <div class="ingredients-container">
+                            <h3>Thành phần <button type="button" id="addIngredientBtn" class="btn-icon">+</button></h3>
+                            <div id="ingredientsList" class="dynamic-list">
+                                <!-- Ingredient rows will be added here -->
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary">Lưu Nguyên liệu (BOM)</button>
+                    </form>
+                    <div id="bomResult" class="result-box"></div>
+                </section>
+
+                <!-- MỚI: Workflow Section (Wizard) -->
+                <section id="wizard-section" class="section-card">
+                    <div class="section-header">
+                        <h2>Tạo Món Mới (Workflow)</h2>
+                        <p>Hướng dẫn từng bước để thiết lập Nguyên liệu, Nguyên liệu (BOM) và Quy trình (SOP) cho một
+                            món ăn mới.</p>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="wizard-progress">
+                        <div class="step-indicator active" id="indicator-1">1. Thông tin</div>
+                        <div class="step-indicator" id="indicator-2">2. Nguyên liệu (BOM)</div>
+                        <div class="step-indicator" id="indicator-3">3. Quy trình (SOP)</div>
+                        <div class="step-indicator" id="indicator-4">4. Xác nhận</div>
+                    </div>
+
+                    <div class="glass-form">
+                        <!-- Step 1: Item Info -->
+                        <div id="wizard-step-1" class="wizard-step active">
+                            <h3>Bước 1: Thông tin cơ bản</h3>
+                            <div class="form-group">
+                                <label for="wizItemName">Tên món (Vd: Burger Bun)</label>
+                                <input type="text" id="wizItemName" placeholder="Nhập tên" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="wizItemSku">Mã SKU (Tùy chọn)</label>
+                                <input type="text" id="wizItemSku" placeholder="Vd: BUN-001">
+                            </div>
+                            <div class="form-group">
+                                <label for="wizItemType">Loại</label>
+                                <select id="wizItemType" class="select-input" required>
+                                    <option value="PRODUCT">Thành phẩm (Product)</option>
+                                    <option value="SEMI_PRODUCT">Bán thành phẩm (Semi-Product)</option>
+                                    <option value="RAW_MATERIAL">Nguyên liệu thô (Raw Material)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="wizItemBaseUnit">Đơn vị cơ sở</label>
+                                <input type="text" id="wizItemBaseUnit" placeholder="Vd: cái, phần" required>
+                            </div>
+                            <div class="modal-actions">
+                                <button type="button" class="btn-primary" onclick="nextWizardStep(2)">Tiếp tục: Tạo BOM
+                                    &rarr;</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: BOM -->
+                        <div id="wizard-step-2" class="wizard-step" style="display: none;">
+                            <h3>Bước 2: Định nghĩa Nguyên liệu (BOM)</h3>
+                            <div id="bomWarning" class="warning-text"
+                                style="color: #fbbf24; font-size: 0.9rem; margin-bottom: 1rem;">
+                                Lưu ý: Vì đây là Thành phẩm, bạn chỉ có thể chọn Bán thành phẩm hoặc Nguyên liệu thô!
+                            </div>
+                            <div class="ingredients-container">
+                                <h3>Thành phần <button type="button" id="wizAddIngredientBtn"
+                                        class="btn-icon">+</button></h3>
+                                <div id="wizIngredientsList" class="dynamic-list"></div>
+                            </div>
+                            <div class="modal-actions">
+                                <button type="button" class="btn-secondary" onclick="prevWizardStep(1)">&larr; Quay
+                                    lại</button>
+                                <button type="button" class="btn-primary" onclick="nextWizardStep(3)">Tiếp tục: Tạo SOP
+                                    &rarr;</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: SOP -->
+                        <div id="wizard-step-3" class="wizard-step" style="display: none;">
+                            <h3>Bước 3: Quy trình chế biến (SOP)</h3>
+                            <p style="color: #9ca3af; margin-bottom: 1rem;">Định nghĩa các bước thực hiện. Các bước
+                                không phụ thuộc nhau sẽ được tự động đưa vào hàng đợi song song.</p>
+
+                            <div class="sop-split-view">
+                                <div class="steps-container">
+                                    <h3>Các bước thực hiện <button type="button" id="wizAddStepBtn"
+                                            class="btn-icon">+</button></h3>
+                                    <div id="wizStepsList" class="dynamic-list"></div>
+                                </div>
+
+                                <div class="sop-preview-container">
+                                    <h3>Sơ đồ hoạt động (Preview)</h3>
+                                    <div id="mermaidPreview" class="mermaid-canvas">
+                                        <div class="empty-state">Thêm bước để xem sơ đồ...</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-actions">
+                                <button type="button" class="btn-secondary" onclick="prevWizardStep(2)">&larr; Quay
+                                    lại</button>
+                                <button type="button" class="btn-primary" onclick="nextWizardStep(4)">Tiếp tục: Xác nhận
+                                    &rarr;</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Confirm -->
+                        <div id="wizard-step-4" class="wizard-step" style="display: none;">
+                            <h3>Bước 4: Xác nhận & Hoàn tất</h3>
+                            <div class="confirm-summary" id="wizardSummary"
+                                style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: #e5e7eb;">
+                                <!-- Summary will be injected here -->
+                            </div>
+                            <div class="modal-actions">
+                                <button type="button" class="btn-secondary" onclick="prevWizardStep(3)">&larr; Quay
+                                    lại</button>
+                                <button type="button" id="wizard-btn-finish" class="btn-accent"
+                                    onclick="submitWizard()">✨ Hoàn tất & Lưu dữ
+                                    liệu</button>
+                            </div>
+                            <div id="wizardResult" class="result-box"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Production Order Section -->
+                <section id="production-section" class="section-card active">
+                    <div class="section-header">
+                        <h2>🚀 Khởi tạo Sản xuất</h2>
+                        <p>Chọn món ăn và bếp để bắt đầu quy trình chế biến tự động.</p>
+                    </div>
+
+                    <div class="split-view">
+                        <div class="wizard-column">
+                            <form id="poForm" class="glass-form">
+                                <div class="form-group">
+                                    <label for="poItemSelect">Chọn Món ăn cần sản xuất</label>
+                                    <select id="poItemSelect" class="select-input" required>
+                                        <option value="" disabled selected>Đang tải danh sách món...</option>
+                                    </select>
+                                    <small id="poBomInfo" style="color: #10b981; font-size: 0.75rem; display: none;">✅
+                                        Đã tìm thấy công thức (BOM)</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="poNodeSelect">Chọn Bếp / Nhà máy thực hiện</label>
+                                    <select id="poNodeSelect" class="select-input" required>
+                                        <option value="" disabled selected>Đang tải danh sách bếp...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="poTargetQty">Số lượng cần sản xuất (Output)</label>
+                                    <div class="row-inline">
+                                        <input type="number" id="poTargetQty" min="1" step="0.5" placeholder="Vd: 50"
+                                            required style="flex: 1;">
+                                        <span id="poUnitLabel" style="color: #9ca3af; padding: 0.5rem;">đơn vị</span>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn-accent"
+                                    style="width: 100%; padding: 1rem; font-size: 1.1rem;">🔥 BẮT ĐẦU CHẾ BIẾN</button>
+                            </form>
+                            <div id="poResult" class="result-box"></div>
+                        </div>
+
+                        <div class="wizard-column">
+                            <div class="list-header">
+                                <h3>⚡ Lệnh sản xuất đang thực thi</h3>
+                            </div>
+                            <div id="activePOList" class="dynamic-list" style="max-height: 400px; overflow-y: auto;">
+                                <div class="empty-state" style="text-align: center; padding: 2rem; color: #6b7280;">
+                                    Chưa có lệnh sản xuất nào đang chạy.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <!-- Organization Management Section -->
+                <section id="org-section" class="section-card">
+                    <div class="section-header">
+                        <h2>🏢 Quản lý Tổ chức & Chi nhánh</h2>
+                        <p>Thiết lập chuỗi cửa hàng, kho bãi và văn phòng điều hành.</p>
+                    </div>
+
+                    <div class="split-view">
+                        <div class="wizard-column">
+                            <div class="glass-form">
+                                <h3>Khởi tạo nhanh chuỗi</h3>
+                                <div class="form-group">
+                                    <label for="orgNameInput">Tên Chuỗi (Tenant)</label>
+                                    <input type="text" id="orgNameInput" placeholder="Vd: Nobi Fried Chicken">
+                                </div>
+                                <button type="button" class="btn-primary" onclick="setupSimulatedOrg()"
+                                    style="width: 100%;">🚀 Khởi tạo (1 HQ, 1 Factory, 2 Stores)</button>
+                                <div id="orgSetupStatus" style="margin-top: 1rem; font-size: 0.85rem;"></div>
+                            </div>
+                        </div>
+
+                        <div class="wizard-column">
+                            <div class="list-header">
+                                <h3>📍 Danh sách chi nhánh (Nodes)</h3>
+                            </div>
+                            <div id="nodesList" class="dynamic-list">
+                                <div class="empty-state">Vui lòng khởi tạo tổ chức để xem danh sách node.</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Machine Management Section -->
+                <section id="machine-section" class="section-card">
+                    <div class="section-header">
+                        <h2>Quản lý Máy móc & Thiết bị</h2>
+                        <p>Đăng ký các máy vật lý cụ thể (Vd: Lò nướng 1, Lò nướng 2) và gán chúng vào Loại trạm tương
+                            ứng.</p>
+                    </div>
+
+                    <div class="split-view">
+                        <div class="wizard-column">
+                            <form id="machineForm" class="glass-form">
+                                <div class="form-group">
+                                    <label for="machineId">Mã định danh máy (Vd: OVEN_01)</label>
+                                    <input type="text" id="machineId" placeholder="Nhập ID máy" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="machineStationType">Loại trạm (Công dụng)</label>
+                                    <select id="machineStationType" class="select-input wiz-station-input" required>
+                                        <option value="" disabled selected>Chọn loại trạm...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="machineCapacity">Công suất tối đa (Vd: 6 khay/lít)</label>
+                                    <input type="number" id="machineCapacity" placeholder="Nhập số lượng" required>
+                                </div>
+                                <div class="form-group" style="display: none;">
+                                    <label for="machineNodeId">Node ID (Cửa hàng hiện tại)</label>
+                                    <input type="text" id="machineNodeId" value="store-01">
+                                </div>
+                                <button type="submit" class="btn-primary" style="width: 100%;">🚀 Đăng ký máy</button>
+                            </form>
+                            <div id="machineResult" class="result-box" style="margin-top: 1rem; display: none;"></div>
+                        </div>
+
+                        <div class="wizard-column">
+                            <div class="table-container">
+                                <table class="item-manager-list">
+                                    <thead>
+                                        <tr>
+                                            <th>ID Máy</th>
+                                            <th>Loại trạm</th>
+                                            <th>Công suất</th>
+                                            <th>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="machinesTableBody">
+                                        <!-- Machines list -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Quick Create Modal (Item) -->
+    <div id="quickCreateModal" class="modal">
+        <div class="modal-content glass-form animate-in">
+            <form id="quickCreateForm">
+                <h3>Tạo nhanh Nguyên liệu / Bán thành phẩm</h3>
+                <div class="form-group">
+                    <label>Tên nguyên liệu</label>
+                    <input type="text" id="quickItemName" placeholder="Vd: Vỏ bánh burger" required>
+                </div>
+                <div class="form-group">
+                    <label>Loại</label>
+                    <select id="quickItemType" class="select-input" required>
+                        <option value="SEMI_PRODUCT">Bán thành phẩm</option>
+                        <option value="RAW_MATERIAL" selected>Nguyên liệu thô</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="cancelQuickCreate" class="btn-secondary">Hủy</button>
+                    <button type="submit" id="confirmQuickCreate" class="btn-primary">Tạo & Chọn</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quick Create Modal (Station Type) -->
+    <div id="quickStationModal" class="modal">
+        <div class="modal-content glass-form animate-in">
+            <form id="quickStationForm">
+                <h3>Thêm loại máy cần dùng</h3>
+                <div class="form-group">
+                    <label>Mã trạm (ID)</label>
+                    <input type="text" id="quickStationId" placeholder="Vd: oven-conveyor" required>
+                </div>
+                <div class="form-group">
+                    <label>Tên hiển thị</label>
+                    <input type="text" id="quickStationName" placeholder="Vd: Lò nướng băng chuyền" required>
+                </div>
+                <div class="form-group">
+                    <label>Đơn vị công suất</label>
+                    <input type="text" id="quickStationUnit" placeholder="Vd: pcs/batch hoặc kg/hour" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="cancelQuickStation" class="btn-secondary">Hủy</button>
+                    <button type="submit" id="confirmQuickStation" class="btn-primary">Tạo & Chọn</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Templates -->
+    <template id="ingredientTemplate">
+        <div class="list-row ingredient-row animate-in" data-line-id="">
+            <select class="wiz-item-id-input select-input" required style="flex: 2;">
+                <option value="" disabled selected>Chọn nguyên liệu...</option>
+            </select>
+            <button type="button" class="btn-quick-add" title="Tạo nhanh nguyên liệu mới">+</button>
+            <input type="number" class="wiz-qty-input" min="0.01" step="0.01" placeholder="SL" required
+                style="width: 80px;">
+            <button type="button" class="btn-remove">×</button>
+        </div>
+    </template>
+
+    <template id="stepTemplate">
+        <div class="list-row sop-step-row animate-in" data-step-id="">
+            <div class="step-header">
+                <span class="step-badge">Bước <span class="step-number">1</span></span>
+                <button type="button" class="btn-remove">×</button>
+            </div>
+            <div class="step-body">
+                <div class="form-group">
+                    <label style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.25rem; display: block;">Phân loại
+                        Trạm (Station Category):</label>
+                    <div class="row-inline">
+                        <select class="wiz-station-input select-input" style="flex: 1;">
+                            <option value="" disabled selected>Chọn trạm (Vd: LÒ NƯỚNG)...</option>
+                        </select>
+                        <button type="button" class="btn-quick-add wiz-station-quick-add"
+                            title="Tạo loại trạm mới">+</button>
+                    </div>
+                    <small style="color: #6b7280; font-size: 0.75rem;">* Hệ thống sẽ tự động gán máy cụ thể khi vận
+                        hành.</small>
+                </div>
+                <div class="form-group row-inline">
+                    <input type="text" class="wiz-desc-input" placeholder="Tên bước (Vd: Nướng bánh)" required
+                        style="flex: 2;">
+                    <input type="number" class="wiz-duration-input" placeholder="Giây" required style="width: 80px;">
+                </div>
+                <div class="form-group dependencies">
+                    <label style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.25rem; display: block;">Chờ hoàn
+                        thành (Tùy chọn):</label>
+                    <div class="depends-container">
+                        <!-- Badges will go here -->
+                    </div>
+                    <select class="wiz-depends-select select-input" style="margin-top: 0.5rem;">
+                        <option value="">+ Thêm bước cần chờ...</option>
+                    </select>
+                </div>
+                <div class="form-group step-ingredients">
+                    <label style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.25rem; display: block;">Nguyên
+                        liệu sử dụng:</label>
+                    <div class="step-ingredients-container" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        <!-- Ingredient badges -->
+                    </div>
+                    <select class="wiz-step-ingredients-select select-input" style="margin-top: 0.5rem;">
+                        <option value="">+ Thêm nguyên liệu từ BOM...</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

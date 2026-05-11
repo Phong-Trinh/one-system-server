@@ -20,6 +20,7 @@ type NodeRepository interface {
 	Create(ctx context.Context, node *models.Node) error
 	FindByID(ctx context.Context, id string) (*models.Node, error)
 	FindByOrgID(ctx context.Context, orgID string) ([]*models.Node, error)
+	FindAll(ctx context.Context) ([]*models.Node, error)
 	Update(ctx context.Context, node *models.Node) error
 	Delete(ctx context.Context, id string) error
 }

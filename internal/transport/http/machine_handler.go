@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"one-system-server/internal/domain/models"
 	"one-system-server/internal/usecase"
 )
 
@@ -48,11 +49,15 @@ func (h *machineHandler) GetByID(c *gin.Context) {
 // GET /api/v1/machines?node_id=
 func (h *machineHandler) ListByNode(c *gin.Context) {
 	nodeID := c.Query("node_id")
-	if nodeID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "node_id query param is required"})
-		return
+	var machines []*models.Machine
+	var err error
+
+	if nodeID != "" {
+		machines, err = h.uc.ListByNode(c.Request.Context(), nodeID)
+	} else {
+		machines, err = h.uc.ListAll(c.Request.Context())
 	}
-	machines, err := h.uc.ListByNode(c.Request.Context(), nodeID)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

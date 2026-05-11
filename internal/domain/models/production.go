@@ -14,6 +14,7 @@ type BOM struct {
 
 // BOMLine is a single component (ingredient) in a BOM.
 type BOMLine struct {
+	ID     string  `json:"id"`      // Unique identifier for the BOM line
 	BOMID  string  `json:"bom_id"`  // FK → BOM
 	ItemID string  `json:"item_id"` // FK → Item (the component)
 	Qty    float64 `json:"qty"`     // Quantity required in base units
@@ -31,11 +32,14 @@ type SOP struct {
 // SOPStep is a single step in a SOP.
 // station_type_id drives the production queue allocation engine.
 type SOPStep struct {
-	SOPID         string `json:"sop_id"`          // FK → SOP
-	SeqNo         int    `json:"seq_no"`          // Execution order
-	StationTypeID string `json:"station_type_id"` // FK → StationType — required machine category
-	Duration      int    `json:"duration"`        // Estimated duration in seconds
-	Description   string `json:"description"`     // Human-readable instruction
+	ID                     string   `json:"id"`                        // Unique identifier for the step
+	SOPID                  string   `json:"sop_id"`                    // FK → SOP
+	SeqNo                  int      `json:"seq_no"`                    // Sequence number (execution order)
+	DependsOn              []string `json:"depends_on"`                // IDs of steps that must complete before this one
+	StationTypeID          string   `json:"station_type_id,omitempty"` // FK → StationType — optional (manual steps)
+	IngredientBOMLineIDs   []string `json:"ingredient_bom_line_ids"`   // FKs → BOMLine.ID (ingredients added in this step)
+	Duration               int      `json:"duration"`                  // Estimated duration in seconds
+	Description            string   `json:"description"`               // Human-readable instruction
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────
@@ -97,10 +101,11 @@ const (
 // A single ProductionOrder may generate multiple batches (capacity overflow, or mix constraint).
 type ProductionBatch struct {
 	ID                  string      `json:"id"`
-	POID                string      `json:"po_id"`      // FK → ProductionOrder
-	MachineID           string      `json:"machine_id"` // FK → Machine
-	ItemID              string      `json:"item_id"`    // Single item type in this batch
-	Qty                 float64     `json:"qty"`        // Units in this batch (base unit)
+	POID                string      `json:"po_id"`       // FK → ProductionOrder
+	SOPStepID           string      `json:"sop_step_id"` // FK → SOPStep
+	MachineID           string      `json:"machine_id"`  // FK → Machine
+	ItemID              string      `json:"item_id"`     // Single item type in this batch
+	Qty                 float64     `json:"qty"`         // Units in this batch (base unit)
 	SlotsUsed           float64     `json:"slots_used"` // qty × ItemCapacityConfig.slot_consumption
 	Status              BatchStatus `json:"status"`
 	StartedAt           *time.Time  `json:"started_at"`           // When machine was claimed

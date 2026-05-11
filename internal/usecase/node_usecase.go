@@ -17,6 +17,7 @@ type NodeUseCase interface {
 	Create(ctx context.Context, orgID string, nodeType models.NodeType, name, address string) (*models.Node, error)
 	GetByID(ctx context.Context, id string) (*models.Node, error)
 	ListByOrg(ctx context.Context, orgID string) ([]*models.Node, error)
+	ListAll(ctx context.Context) ([]*models.Node, error)
 	Update(ctx context.Context, id string, name, address string) (*models.Node, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -84,6 +85,10 @@ func (uc *nodeUseCase) GetByID(ctx context.Context, id string) (*models.Node, er
 
 func (uc *nodeUseCase) ListByOrg(ctx context.Context, orgID string) ([]*models.Node, error) {
 	return uc.nodeRepo.FindByOrgID(ctx, orgID)
+}
+
+func (uc *nodeUseCase) ListAll(ctx context.Context) ([]*models.Node, error) {
+	return uc.nodeRepo.FindAll(ctx)
 }
 
 func (uc *nodeUseCase) Update(ctx context.Context, id, name, address string) (*models.Node, error) {

@@ -111,6 +111,24 @@ func (r *nodeRepository) FindByOrgID(ctx context.Context, orgID string) ([]*mode
 	return nodes, cur.Err()
 }
 
+func (r *nodeRepository) FindAll(ctx context.Context) ([]*models.Node, error) {
+	cur, err := r.col.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("nodeRepository.FindAll: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var nodes []*models.Node
+	for cur.Next(ctx) {
+		var doc nodeDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, docToNode(&doc))
+	}
+	return nodes, cur.Err()
+}
+
 func (r *nodeRepository) Update(ctx context.Context, node *models.Node) error {
 	_, err := r.col.ReplaceOne(ctx, bson.M{"_id": node.ID}, nodeToDoc(node))
 	if err != nil {

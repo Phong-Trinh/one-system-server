@@ -14,6 +14,7 @@ const (
 // Item is the base entity for all physical goods in the system.
 type Item struct {
 	ID       string   `json:"id"`
+	OrgID    string   `json:"org_id"`   // FK → Organization (HQ defines the master catalog)
 	Name     string   `json:"name"`
 	SKU      string   `json:"sku"`
 	Type     ItemType `json:"type"`      // PRODUCT | SEMI_PRODUCT | RAW_MATERIAL | ASSET_SUPPLY

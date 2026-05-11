@@ -152,3 +152,21 @@ func decodeMachines(ctx context.Context, cur *mongo.Cursor) ([]*models.Machine, 
 	}
 	return machines, cur.Err()
 }
+
+func (r *machineRepository) FindAll(ctx context.Context) ([]*models.Machine, error) {
+	cur, err := r.col.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("machineRepository.FindAll: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var machines []*models.Machine
+	for cur.Next(ctx) {
+		var doc machineDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		machines = append(machines, docToMachine(&doc))
+	}
+	return machines, cur.Err()
+}

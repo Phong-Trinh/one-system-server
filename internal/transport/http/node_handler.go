@@ -50,11 +50,15 @@ func (h *nodeHandler) GetByID(c *gin.Context) {
 // GET /api/v1/nodes?org_id=
 func (h *nodeHandler) ListByOrg(c *gin.Context) {
 	orgID := c.Query("org_id")
-	if orgID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "org_id query param is required"})
-		return
+	var nodes []*models.Node
+	var err error
+
+	if orgID != "" {
+		nodes, err = h.uc.ListByOrg(c.Request.Context(), orgID)
+	} else {
+		nodes, err = h.uc.ListAll(c.Request.Context())
 	}
-	nodes, err := h.uc.ListByOrg(c.Request.Context(), orgID)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

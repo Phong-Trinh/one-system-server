@@ -18,9 +18,25 @@ func NewRouter(
 	stationTypeUC usecase.StationTypeUseCase,
 	machineUC usecase.MachineUseCase,
 	staffUC usecase.StaffUseCase,
+	productionUC usecase.ProductionUseCase,
+	itemUC usecase.ItemUseCase,
 ) *Router {
 	engine := gin.New()
 	engine.Use(gin.Logger(), gin.Recovery())
+
+	// Thêm Middleware CORS đơn giản
+	engine.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, PATCH")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
 
 	// Health check
 	engine.GET("/health", func(c *gin.Context) {
@@ -29,6 +45,17 @@ func NewRouter(
 
 	v1 := engine.Group("/api/v1")
 	{
+		// Items
+		itemH := newItemHandler(itemUC)
+		items := v1.Group("/items")
+		{
+			items.POST("", itemH.Create)
+			items.GET("", itemH.List)
+			items.GET("/:id", itemH.GetByID)
+			items.PUT("/:id", itemH.Update)
+			items.DELETE("/:id", itemH.Delete)
+		}
+
 		// Organizations
 		orgH := newOrgHandler(orgUC)
 		orgs := v1.Group("/orgs")
@@ -82,6 +109,27 @@ func NewRouter(
 			staff.GET("", staffH.ListByNode) // ?node_id=
 			staff.PUT("/:id", staffH.Update)
 			staff.DELETE("/:id", staffH.Delete)
+		}
+
+		// Production (BOM, SOP, Orders)
+		prodH := newProductionHandler(productionUC)
+		prod := v1.Group("/production")
+		{
+			prod.POST("/boms", prodH.CreateBOM)
+			prod.GET("/boms/by-item/:id", prodH.GetFullBOMByItem)
+			prod.PUT("/boms/:id", prodH.UpdateBOM)
+
+			prod.POST("/sops", prodH.CreateSOP)
+			prod.GET("/sops/by-bom/:id", prodH.GetFullSOPByBOM)
+			prod.PUT("/sops/:id", prodH.UpdateSOP)
+
+			orders := prod.Group("/orders")
+			{
+				orders.POST("", prodH.CreateOrder)
+				orders.GET("", prodH.ListOrders) // ?node_id=
+				orders.GET("/:id", prodH.GetOrder)
+				orders.PATCH("/:id/status", prodH.UpdateStatus)
+			}
 		}
 	}
 

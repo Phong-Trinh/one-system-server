@@ -20,6 +20,7 @@ type MachineRepository interface {
 	Create(ctx context.Context, m *models.Machine) error
 	FindByID(ctx context.Context, id string) (*models.Machine, error)
 	FindByNodeID(ctx context.Context, nodeID string) ([]*models.Machine, error)
+	FindAll(ctx context.Context) ([]*models.Machine, error)
 	// FindIdleByStationType returns all IDLE machines of a given station type at a node.
 	// Used by the bin-packing allocation engine (Layer 5).
 	FindIdleByStationType(ctx context.Context, nodeID, stationTypeID string) ([]*models.Machine, error)

@@ -223,12 +223,15 @@ The atomic execution unit that locks a machine for one cook cycle. A single Prod
 
 **SOP Step (extended)**
 
-Each step in an SOP now carries a `station_type_id`, telling the allocation engine which type of machine is required for that step.
+Each step in an SOP now carries a `station_type_id` (optional) and a list of `ingredient_bom_line_ids` (referencing lines in the BOM).
 
 | Field | Description |
 |---|---|
-| `station_type_id` | FK → `StationType` — the required machine category for this step |
-| *(existing fields)* | sequence, duration, description, etc. |
+| `station_type_id` | FK → `StationType` — required machine category (optional for manual steps) |
+| `ingredient_bom_line_ids` | FKs → `BOMLine.id` — ingredients consumed/added in this specific step |
+| `duration` | Estimated time in seconds |
+| `description` | Instructions for the staff |
+| `depends_on` | List of parent step IDs (for DAG parallelism) |
 
 ---
 

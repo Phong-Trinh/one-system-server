@@ -16,6 +16,7 @@ type MachineUseCase interface {
 	Create(ctx context.Context, nodeID, stationTypeID string, maxSlots int) (*models.Machine, error)
 	GetByID(ctx context.Context, id string) (*models.Machine, error)
 	ListByNode(ctx context.Context, nodeID string) ([]*models.Machine, error)
+	ListAll(ctx context.Context) ([]*models.Machine, error)
 	Update(ctx context.Context, id string, maxSlots int) (*models.Machine, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -87,6 +88,10 @@ func (uc *machineUseCase) GetByID(ctx context.Context, id string) (*models.Machi
 
 func (uc *machineUseCase) ListByNode(ctx context.Context, nodeID string) ([]*models.Machine, error) {
 	return uc.machineRepo.FindByNodeID(ctx, nodeID)
+}
+
+func (uc *machineUseCase) ListAll(ctx context.Context) ([]*models.Machine, error) {
+	return uc.machineRepo.FindAll(ctx)
 }
 
 func (uc *machineUseCase) Update(ctx context.Context, id string, maxSlots int) (*models.Machine, error) {

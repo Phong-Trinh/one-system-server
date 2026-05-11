@@ -54,15 +54,22 @@ func New(ctx context.Context) (*App, error) {
 	machineRepo := mongorepo.NewMachineRepository(mongoClient, dbName)
 	staffRepo := mongorepo.NewStaffRepository(mongoClient, dbName)
 
+	bomRepo := mongorepo.NewBOMRepository(mongoClient, dbName)
+	sopRepo := mongorepo.NewSOPRepository(mongoClient, dbName)
+	poRepo := mongorepo.NewProductionOrderRepository(mongoClient, dbName)
+	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
+
 	// ── Use Cases (Application) ───────────────────────────────────────────────
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	nodeUC := usecase.NewNodeUseCase(nodeRepo, orgRepo)
 	stationTypeUC := usecase.NewStationTypeUseCase(stationTypeRepo)
 	machineUC := usecase.NewMachineUseCase(machineRepo, nodeRepo, stationTypeRepo)
 	staffUC := usecase.NewStaffUseCase(staffRepo, nodeRepo)
+	productionUC := usecase.NewProductionUseCase(poRepo, bomRepo, sopRepo, nodeRepo)
+	itemUC := usecase.NewItemUseCase(itemRepo)
 
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
-	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC)
+	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC)
 
 	return &App{router: router, mongoClient: mongoClient}, nil
 }
