@@ -37,6 +37,7 @@ type SOPRepository interface {
 
 	// SOP Steps
 	AddStep(ctx context.Context, step *models.SOPStep) error
+	FindStepByID(ctx context.Context, sopStepID string) (*models.SOPStep, error)
 	ListSteps(ctx context.Context, sopID string) ([]*models.SOPStep, error)
 	DeleteStep(ctx context.Context, sopID string, stepID string) error
 }
@@ -62,4 +63,20 @@ type ProductionOrderRepository interface {
 	// Staff assignments
 	AssignStaff(ctx context.Context, assignment *models.POStaffAssignment) error
 	ListStaffAssignments(ctx context.Context, poID string) ([]*models.POStaffAssignment, error)
+}
+
+// ── Production Batch ──────────────────────────────────────────────────────────
+
+// ProductionBatchRepository defines persistence operations for ProductionBatch.
+type ProductionBatchRepository interface {
+	Create(ctx context.Context, batch *models.ProductionBatch) error
+	FindByID(ctx context.Context, id string) (*models.ProductionBatch, error)
+	// FindByNode returns batches for a node, optionally filtered by status.
+	FindByNode(ctx context.Context, nodeID string, statuses []models.BatchStatus) ([]*models.ProductionBatch, error)
+	// FindByMachine returns batches assigned to a machine, optionally filtered by status.
+	FindByMachine(ctx context.Context, machineID string, statuses []models.BatchStatus) ([]*models.ProductionBatch, error)
+	// UpdateStatus atomically updates the status of a batch and relevant timestamps.
+	UpdateStatus(ctx context.Context, id string, status models.BatchStatus) error
+	Update(ctx context.Context, batch *models.ProductionBatch) error
+	Delete(ctx context.Context, id string) error
 }

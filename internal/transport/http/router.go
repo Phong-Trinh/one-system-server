@@ -20,11 +20,12 @@ func NewRouter(
 	staffUC usecase.StaffUseCase,
 	productionUC usecase.ProductionUseCase,
 	itemUC usecase.ItemUseCase,
+	allocationUC usecase.AllocationUseCase,
 ) *Router {
 	engine := gin.New()
 	engine.Use(gin.Logger(), gin.Recovery())
 
-	// Thêm Middleware CORS đơn giản
+	// Middleware CORS
 	engine.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, PATCH")
@@ -109,6 +110,14 @@ func NewRouter(
 			staff.GET("", staffH.ListByNode) // ?node_id=
 			staff.PUT("/:id", staffH.Update)
 			staff.DELETE("/:id", staffH.Delete)
+		}
+
+		// KDS (Kitchen Display System) - Command & Confirm Flow
+		kdsH := newKDSHandler(allocationUC)
+		kds := v1.Group("/kds")
+		{
+			kds.POST("/batches/:id/confirm-placement", kdsH.ConfirmPlacement)
+			kds.POST("/batches/:id/confirm-completion", kdsH.ConfirmCompletion)
 		}
 
 		// Production (BOM, SOP, Orders)

@@ -92,12 +92,13 @@ type BatchStatus string
 
 const (
 	BatchQueued     BatchStatus = "QUEUED"
-	BatchInProgress BatchStatus = "IN_PROGRESS"
+	BatchAllocated  BatchStatus = "ALLOCATED"   // System assigned machine, waiting for staff confirm
+	BatchInProgress BatchStatus = "IN_PROGRESS" // Staff confirmed placement, timer running
 	BatchCompleted  BatchStatus = "COMPLETED"
 	BatchFailed     BatchStatus = "FAILED"
 )
 
-// ProductionBatch is the atomic execution unit that locks one machine for one cook cycle.
+// ProductionBatch is the atomic execution unit that locks one machine (or slot) for one cook cycle.
 // A single ProductionOrder may generate multiple batches (capacity overflow, or mix constraint).
 type ProductionBatch struct {
 	ID                  string      `json:"id"`
@@ -106,11 +107,12 @@ type ProductionBatch struct {
 	MachineID           string      `json:"machine_id"`  // FK → Machine
 	ItemID              string      `json:"item_id"`     // Single item type in this batch
 	Qty                 float64     `json:"qty"`         // Units in this batch (base unit)
-	SlotsUsed           float64     `json:"slots_used"` // qty × ItemCapacityConfig.slot_consumption
+	SlotsUsed           float64     `json:"slots_used"`  // qty × ItemCapacityConfig.slot_consumption
 	Status              BatchStatus `json:"status"`
-	StartedAt           *time.Time  `json:"started_at"`           // When machine was claimed
+	AllocatedAt         *time.Time  `json:"allocated_at"`         // When system reserved the machine slot
+	StartedAt           *time.Time  `json:"started_at"`           // When staff clicked "Confirm Placed"
 	EstimatedCompletion *time.Time  `json:"estimated_completion"` // started_at + SOPStep.duration
-	ActualEnd           *time.Time  `json:"actual_end"`           // Real completion time
+	ActualEnd           *time.Time  `json:"actual_end"`           // When staff clicked "Confirm Completed"
 }
 
 // StockConsumption records actual material consumed during a batch.

@@ -43,17 +43,25 @@ type MachineStatus string
 
 const (
 	MachineIdle MachineStatus = "IDLE"
-	MachineBusy MachineStatus = "BUSY"
+	MachineBusy MachineStatus = "BUSY" // Used mainly for BATCH_SYNC or when at Threshold
+)
+
+type AllocationStrategy string
+
+const (
+	StrategySync  AllocationStrategy = "BATCH_SYNC"  // Group all, start together (Fryers/Ovens)
+	StrategyAsync AllocationStrategy = "SLOT_ASYNC" // Allow overlapping starts (Grills/Open surfaces)
 )
 
 // Machine is a specific physical machine instance at a node.
 type Machine struct {
-	ID             string        `json:"id"`               // e.g., "M_FRYER_01"
-	StationTypeID  string        `json:"station_type_id"`  // FK → StationType
-	NodeID         string        `json:"node_id"`          // FK → Node
-	MaxSlots       int           `json:"max_slots"`        // Total capacity in StationType.capacity_unit
-	Status         MachineStatus `json:"status"`           // IDLE | BUSY
-	CurrentBatchID *string       `json:"current_batch_id"` // FK → ProductionBatch (null when IDLE)
+	ID                   string             `json:"id"`                    // e.g., "M_FRYER_01"
+	StationTypeID        string             `json:"station_type_id"`       // FK → StationType
+	NodeID               string             `json:"node_id"`               // FK → Node
+	MaxCapacity          float64            `json:"max_capacity"`          // Physical limit (e.g., 6.0 liters or 4.0 slots)
+	OperationalThreshold float64            `json:"operational_threshold"` // Operational limit for staff ease
+	AllocationStrategy   AllocationStrategy `json:"allocation_strategy"`
+	Status               MachineStatus      `json:"status"`                // IDLE | BUSY
 }
 
 // ─── Staff ────────────────────────────────────────────────────────────────────
