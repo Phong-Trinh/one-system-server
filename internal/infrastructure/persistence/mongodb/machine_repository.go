@@ -17,35 +17,42 @@ const collMachines = "machines"
 // ── BSON document ─────────────────────────────────────────────────────────────
 
 type machineDoc struct {
-	ID             string               `bson:"_id"`
-	StationTypeID  string               `bson:"station_type_id"`
-	NodeID         string               `bson:"node_id"`
-	MaxSlots       int                  `bson:"max_slots"`
-	Status         models.MachineStatus `bson:"status"`
-	CurrentBatchID *string              `bson:"current_batch_id,omitempty"`
+	ID                   string                   `bson:"_id"`
+	StationTypeID        string                   `bson:"station_type_id"`
+	NodeID               string                   `bson:"node_id"`
+	MaxCapacity          float64                  `bson:"max_capacity"`
+	OperationalThreshold float64                  `bson:"operational_threshold"`
+	AllocationStrategy   models.AllocationStrategy `bson:"allocation_strategy"`
+	Status               models.MachineStatus     `bson:"status"`
+	CurrentBatchID       *string                  `bson:"current_batch_id,omitempty"`
 }
 
 func machineToDoc(m *models.Machine) *machineDoc {
 	return &machineDoc{
-		ID:             m.ID,
-		StationTypeID:  m.StationTypeID,
-		NodeID:         m.NodeID,
-		MaxSlots:       m.MaxSlots,
-		Status:         m.Status,
-		CurrentBatchID: m.CurrentBatchID,
+		ID:                   m.ID,
+		StationTypeID:        m.StationTypeID,
+		NodeID:               m.NodeID,
+		MaxCapacity:          m.MaxCapacity,
+		OperationalThreshold: m.OperationalThreshold,
+		AllocationStrategy:   m.AllocationStrategy,
+		Status:               m.Status,
+		CurrentBatchID:       m.CurrentBatchID,
 	}
 }
 
 func docToMachine(d *machineDoc) *models.Machine {
 	return &models.Machine{
-		ID:             d.ID,
-		StationTypeID:  d.StationTypeID,
-		NodeID:         d.NodeID,
-		MaxSlots:       d.MaxSlots,
-		Status:         d.Status,
-		CurrentBatchID: d.CurrentBatchID,
+		ID:                   d.ID,
+		StationTypeID:        d.StationTypeID,
+		NodeID:               d.NodeID,
+		MaxCapacity:          d.MaxCapacity,
+		OperationalThreshold: d.OperationalThreshold,
+		AllocationStrategy:   d.AllocationStrategy,
+		Status:               d.Status,
+		CurrentBatchID:       d.CurrentBatchID,
 	}
 }
+
 
 // ── Repository ────────────────────────────────────────────────────────────────
 

@@ -27,11 +27,10 @@ type AllocationUseCase interface {
 // ── Implementation ────────────────────────────────────────────────────────────
 
 type allocationUseCase struct {
-	poRepo         services.ProductionOrderRepository
-	batchRepo      services.ProductionBatchRepository
-	machineRepo    services.MachineRepository
-	sopRepo        services.SOPRepository
-	itemConfigRepo services.ConfigRepository // Assuming ItemCapacityConfig is here
+	poRepo      services.ProductionOrderRepository
+	batchRepo   services.ProductionBatchRepository
+	machineRepo services.MachineRepository
+	sopRepo     services.SOPRepository
 }
 
 func NewAllocationUseCase(
@@ -39,14 +38,12 @@ func NewAllocationUseCase(
 	batchRepo services.ProductionBatchRepository,
 	machineRepo services.MachineRepository,
 	sopRepo services.SOPRepository,
-	itemConfigRepo services.ConfigRepository,
 ) AllocationUseCase {
 	return &allocationUseCase{
-		poRepo:         poRepo,
-		batchRepo:      batchRepo,
-		machineRepo:    machineRepo,
-		sopRepo:        sopRepo,
-		itemConfigRepo: itemConfigRepo,
+		poRepo:      poRepo,
+		batchRepo:   batchRepo,
+		machineRepo: machineRepo,
+		sopRepo:     sopRepo,
 	}
 }
 
@@ -71,10 +68,12 @@ func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error
 				ID:        uuid.NewString(),
 				POID:      po.ID,
 				SOPStepID: step.ID,
+				NodeID:    po.NodeID,
 				Status:    models.BatchQueued,
 				// ItemID and Qty would be derived from the PO/SOP context
 				// This is a simplified version
 			}
+
 			if err := uc.batchRepo.Create(ctx, batch); err != nil {
 				return err
 			}
@@ -102,15 +101,26 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 
 	// 3. For each machine, try to allocate from the queue
 	for _, m := range machines {
-		if m.Status == models.MachineBusy && m.AllocationStrategy == models.StrategySync {
-			continue // Fully locked
-		}
-
-		// Calculate current load
+		// Calculate current load and check if any batch is already physically cooking
 		activeBatches, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
+
 		currentLoad := 0.0
+		hasInProgress := false
+		referenceItemID := ""
+
 		for _, b := range activeBatches {
 			currentLoad += b.SlotsUsed
+			if b.Status == models.BatchInProgress {
+				hasInProgress = true
+			}
+			if referenceItemID == "" && b.ItemID != "" {
+				referenceItemID = b.ItemID
+			}
+		}
+
+		// If machine is BATCH_SYNC and already has a batch in progress, it's locked until completion
+		if hasInProgress && m.AllocationStrategy == models.StrategySync {
+			continue
 		}
 
 		if currentLoad >= m.OperationalThreshold {
@@ -118,9 +128,6 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 		}
 
 		// 4. Try to find matching tasks in the queue for this machine
-		// For SLOT_ASYNC, we can pick tasks one by one up to threshold.
-		// For BATCH_SYNC, we only allocate if the machine is IDLE.
-
 		for i := 0; i < len(queued); i++ {
 			b := queued[i]
 			if b == nil {
@@ -128,12 +135,10 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			}
 
 			// Must match station type
-			if b.MachineID != "" || m.StationTypeID != "" {
-				// We need to fetch the SOPStep to know the required StationType
-				step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
-				if step == nil || step.StationTypeID != m.StationTypeID {
-					continue
-				}
+			// We need to fetch the SOPStep to know the required StationType
+			step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
+			if step == nil || step.StationTypeID != m.StationTypeID {
+				continue
 			}
 
 			// Check capacity
@@ -141,20 +146,21 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 				continue
 			}
 
-			// Mixing Rules Logic:
-			// If machine is SLOT_ASYNC, we can generally mix (independent slots).
-			// If machine is BATCH_SYNC, we follow the "One-item-type-per-cycle" rule unless AllowMix=true.
-
-			// For now, let's implement the "Same Item Type" batching as priority
+			// Allocation Logic:
 			canAllocate := false
 			if m.AllocationStrategy == models.StrategyAsync {
+				// SLOT_ASYNC: Always allow if capacity fits
 				canAllocate = true
 			} else {
-				// BATCH_SYNC: Only if machine is currently idle
+				// BATCH_SYNC:
+				// 1. If machine is empty, it can take anything
 				if currentLoad == 0 {
 					canAllocate = true
+				} else if b.ItemID == referenceItemID {
+					// 2. If machine is not empty but NOT YET started,
+					// it can take more of the SAME ITEM
+					canAllocate = true
 				}
-				// Or if we are building a consolidated batch (not implemented yet in this loop)
 			}
 
 			if canAllocate {
@@ -165,6 +171,9 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 
 				if err := uc.batchRepo.Update(ctx, b); err == nil {
 					currentLoad += b.SlotsUsed
+					if referenceItemID == "" {
+						referenceItemID = b.ItemID
+					}
 					queued[i] = nil // Mark as assigned in this run
 				}
 			}
@@ -190,11 +199,80 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		return err
 	}
 
-	// Trigger next steps logic here...
-	// 1. Check if all sibling steps for this PO are done
-	// 2. Find steps that depend on this one
-	// 3. If all their dependencies are met, create QUEUED batches for them
+	// 1. Get PO and all its steps to find what's next
+	po, err := uc.poRepo.FindByID(ctx, batch.POID)
+	if err != nil || po == nil {
+		return fmt.Errorf("production order %q not found", batch.POID)
+	}
 
-	po, _ := uc.poRepo.FindByID(ctx, batch.POID)
+	allSteps, err := uc.sopRepo.ListSteps(ctx, po.SOPID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Get all batches already created for this PO to check completion status
+	existingBatches, err := uc.batchRepo.FindByNode(ctx, po.NodeID, nil) // In a real system, filter by POID
+	if err != nil {
+		return err
+	}
+
+	// Helper to check if a specific step is completed
+	isStepCompleted := func(stepID string) bool {
+		for _, eb := range existingBatches {
+			if eb.POID == po.ID && eb.SOPStepID == stepID && eb.Status == models.BatchCompleted {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 3. Find steps that depend on the step we just finished
+	for _, nextStep := range allSteps {
+		isDependent := false
+		for _, depID := range nextStep.DependsOn {
+			if depID == batch.SOPStepID {
+				isDependent = true
+				break
+			}
+		}
+
+		if isDependent {
+			// 4. Check if ALL dependencies for this nextStep are now satisfied
+			allMet := true
+			for _, depID := range nextStep.DependsOn {
+				if !isStepCompleted(depID) {
+					allMet = false
+					break
+				}
+			}
+
+			// 5. If all met, create the next QUEUED batch
+			if allMet {
+				// Check if we already created a batch for this step to avoid duplicates
+				alreadyExists := false
+				for _, eb := range existingBatches {
+					if eb.POID == po.ID && eb.SOPStepID == nextStep.ID {
+						alreadyExists = true
+						break
+					}
+				}
+
+				if !alreadyExists {
+					newBatch := &models.ProductionBatch{
+						ID:        uuid.NewString(),
+						POID:      po.ID,
+						SOPStepID: nextStep.ID,
+						NodeID:    po.NodeID,
+						Status:    models.BatchQueued,
+						// ItemID/Qty logic would go here
+					}
+					_ = uc.batchRepo.Create(ctx, newBatch)
+				}
+			}
+		}
+	}
+
+	// 6. Trigger allocation for the newly queued tasks
 	return uc.RunAllocation(ctx, po.NodeID)
 }
+

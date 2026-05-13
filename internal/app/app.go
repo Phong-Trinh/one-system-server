@@ -57,6 +57,7 @@ func New(ctx context.Context) (*App, error) {
 	bomRepo := mongorepo.NewBOMRepository(mongoClient, dbName)
 	sopRepo := mongorepo.NewSOPRepository(mongoClient, dbName)
 	poRepo := mongorepo.NewProductionOrderRepository(mongoClient, dbName)
+	batchRepo := mongorepo.NewProductionBatchRepository(mongoClient, dbName)
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
 
 	// ── Use Cases (Application) ───────────────────────────────────────────────
@@ -67,9 +68,11 @@ func New(ctx context.Context) (*App, error) {
 	staffUC := usecase.NewStaffUseCase(staffRepo, nodeRepo)
 	productionUC := usecase.NewProductionUseCase(poRepo, bomRepo, sopRepo, nodeRepo)
 	itemUC := usecase.NewItemUseCase(itemRepo)
+	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
 
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
-	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC)
+	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC)
+
 
 	return &App{router: router, mongoClient: mongoClient}, nil
 }

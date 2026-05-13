@@ -104,16 +104,20 @@ type ProductionBatch struct {
 	ID                  string      `json:"id"`
 	POID                string      `json:"po_id"`       // FK → ProductionOrder
 	SOPStepID           string      `json:"sop_step_id"` // FK → SOPStep
+	NodeID              string      `json:"node_id"`     // FK → Node
 	MachineID           string      `json:"machine_id"`  // FK → Machine
 	ItemID              string      `json:"item_id"`     // Single item type in this batch
 	Qty                 float64     `json:"qty"`         // Units in this batch (base unit)
 	SlotsUsed           float64     `json:"slots_used"`  // qty × ItemCapacityConfig.slot_consumption
 	Status              BatchStatus `json:"status"`
+
 	AllocatedAt         *time.Time  `json:"allocated_at"`         // When system reserved the machine slot
 	StartedAt           *time.Time  `json:"started_at"`           // When staff clicked "Confirm Placed"
 	EstimatedCompletion *time.Time  `json:"estimated_completion"` // started_at + SOPStep.duration
 	ActualEnd           *time.Time  `json:"actual_end"`           // When staff clicked "Confirm Completed"
 }
+
+
 
 // StockConsumption records actual material consumed during a batch.
 // Written at batch completion and feeds into POCostRecord.material_cost.

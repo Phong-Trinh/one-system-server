@@ -162,6 +162,19 @@ func (r *sopRepository) AddStep(ctx context.Context, step *models.SOPStep) error
 	return nil
 }
 
+func (r *sopRepository) FindStepByID(ctx context.Context, id string) (*models.SOPStep, error) {
+	var doc sopStepDoc
+	err := r.steps.FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sopRepository.FindStepByID: %w", err)
+	}
+	return docToSOPStep(&doc), nil
+}
+
+
 // ListSteps returns steps for a SOP.
 func (r *sopRepository) ListSteps(ctx context.Context, sopID string) ([]*models.SOPStep, error) {
 	cur, err := r.steps.Find(ctx, bson.M{"sop_id": sopID})

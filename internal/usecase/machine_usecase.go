@@ -13,11 +13,11 @@ import (
 // ── Interface ─────────────────────────────────────────────────────────────────
 
 type MachineUseCase interface {
-	Create(ctx context.Context, nodeID, stationTypeID string, maxSlots int) (*models.Machine, error)
+	Create(ctx context.Context, nodeID, stationTypeID string, maxCapacity float64) (*models.Machine, error)
 	GetByID(ctx context.Context, id string) (*models.Machine, error)
 	ListByNode(ctx context.Context, nodeID string) ([]*models.Machine, error)
 	ListAll(ctx context.Context) ([]*models.Machine, error)
-	Update(ctx context.Context, id string, maxSlots int) (*models.Machine, error)
+	Update(ctx context.Context, id string, maxCapacity float64) (*models.Machine, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -41,9 +41,9 @@ func NewMachineUseCase(
 	}
 }
 
-func (uc *machineUseCase) Create(ctx context.Context, nodeID, stationTypeID string, maxSlots int) (*models.Machine, error) {
-	if maxSlots <= 0 {
-		return nil, fmt.Errorf("max_slots must be positive")
+func (uc *machineUseCase) Create(ctx context.Context, nodeID, stationTypeID string, maxCapacity float64) (*models.Machine, error) {
+	if maxCapacity <= 0 {
+		return nil, fmt.Errorf("max_capacity must be positive")
 	}
 	// Validate node exists
 	node, err := uc.nodeRepo.FindByID(ctx, nodeID)
@@ -66,7 +66,7 @@ func (uc *machineUseCase) Create(ctx context.Context, nodeID, stationTypeID stri
 		ID:            uuid.NewString(),
 		StationTypeID: stationTypeID,
 		NodeID:        nodeID,
-		MaxSlots:      maxSlots,
+		MaxCapacity:   maxCapacity,
 		Status:        models.MachineIdle,
 	}
 	if err := uc.machineRepo.Create(ctx, m); err != nil {
@@ -94,7 +94,7 @@ func (uc *machineUseCase) ListAll(ctx context.Context) ([]*models.Machine, error
 	return uc.machineRepo.FindAll(ctx)
 }
 
-func (uc *machineUseCase) Update(ctx context.Context, id string, maxSlots int) (*models.Machine, error) {
+func (uc *machineUseCase) Update(ctx context.Context, id string, maxCapacity float64) (*models.Machine, error) {
 	m, err := uc.machineRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -102,15 +102,16 @@ func (uc *machineUseCase) Update(ctx context.Context, id string, maxSlots int) (
 	if m == nil {
 		return nil, fmt.Errorf("machine %q not found", id)
 	}
-	if maxSlots <= 0 {
-		return nil, fmt.Errorf("max_slots must be positive")
+	if maxCapacity <= 0 {
+		return nil, fmt.Errorf("max_capacity must be positive")
 	}
-	m.MaxSlots = maxSlots
+	m.MaxCapacity = maxCapacity
 	if err := uc.machineRepo.Update(ctx, m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
+
 
 func (uc *machineUseCase) Delete(ctx context.Context, id string) error {
 	return uc.machineRepo.Delete(ctx, id)

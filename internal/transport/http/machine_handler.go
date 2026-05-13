@@ -20,15 +20,15 @@ func newMachineHandler(uc usecase.MachineUseCase) *machineHandler {
 // POST /api/v1/machines
 func (h *machineHandler) Create(c *gin.Context) {
 	var req struct {
-		NodeID        string `json:"node_id"         binding:"required"`
-		StationTypeID string `json:"station_type_id" binding:"required"`
-		MaxSlots      int    `json:"max_slots"       binding:"required,min=1"`
+		NodeID        string  `json:"node_id"         binding:"required"`
+		StationTypeID string  `json:"station_type_id" binding:"required"`
+		MaxCapacity   float64 `json:"max_capacity"    binding:"required,gt=0"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	m, err := h.uc.Create(c.Request.Context(), req.NodeID, req.StationTypeID, req.MaxSlots)
+	m, err := h.uc.Create(c.Request.Context(), req.NodeID, req.StationTypeID, req.MaxCapacity)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -68,19 +68,20 @@ func (h *machineHandler) ListByNode(c *gin.Context) {
 // PUT /api/v1/machines/:id
 func (h *machineHandler) Update(c *gin.Context) {
 	var req struct {
-		MaxSlots int `json:"max_slots" binding:"required,min=1"`
+		MaxCapacity float64 `json:"max_capacity" binding:"required,gt=0"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	m, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.MaxSlots)
+	m, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.MaxCapacity)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, m)
 }
+
 
 // DELETE /api/v1/machines/:id
 func (h *machineHandler) Delete(c *gin.Context) {

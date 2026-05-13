@@ -61,8 +61,10 @@ type Machine struct {
 	MaxCapacity          float64            `json:"max_capacity"`          // Physical limit (e.g., 6.0 liters or 4.0 slots)
 	OperationalThreshold float64            `json:"operational_threshold"` // Operational limit for staff ease
 	AllocationStrategy   AllocationStrategy `json:"allocation_strategy"`
-	Status               MachineStatus      `json:"status"`                // IDLE | BUSY
+	Status               MachineStatus      `json:"status"` // IDLE | BUSY
+	CurrentBatchID       *string            `json:"current_batch_id,omitempty"`
 }
+
 
 // ─── Staff ────────────────────────────────────────────────────────────────────
 
