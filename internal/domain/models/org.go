@@ -34,9 +34,10 @@ type Node struct {
 
 // StationType defines a category of kitchen equipment (e.g., FRYER, OVEN, GRILL).
 type StationType struct {
-	ID           string `json:"id"`            // e.g., "FRYER", "OVEN", "GRILL"
-	Name         string `json:"name"`          // Display label
-	CapacityUnit string `json:"capacity_unit"` // e.g., "slots", "liters", "trays"
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	CapacityUnit    string             `json:"capacity_unit"`
+	DefaultStrategy AllocationStrategy `json:"default_strategy"`
 }
 
 type MachineStatus string
@@ -59,7 +60,6 @@ type Machine struct {
 	StationTypeID        string             `json:"station_type_id"`       // FK → StationType
 	NodeID               string             `json:"node_id"`               // FK → Node
 	MaxCapacity          float64            `json:"max_capacity"`          // Physical limit (e.g., 6.0 liters or 4.0 slots)
-	OperationalThreshold float64            `json:"operational_threshold"` // Operational limit for staff ease
 	AllocationStrategy   AllocationStrategy `json:"allocation_strategy"`
 	Status               MachineStatus      `json:"status"` // IDLE | BUSY
 	CurrentBatchID       *string            `json:"current_batch_id,omitempty"`

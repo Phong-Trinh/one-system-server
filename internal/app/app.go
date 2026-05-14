@@ -8,6 +8,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 
+	"one-system-server/internal/domain/models"
+	"one-system-server/internal/domain/services"
 	mongorepo "one-system-server/internal/infrastructure/persistence/mongodb"
 	transport "one-system-server/internal/transport/http"
 	"one-system-server/internal/usecase"
@@ -73,8 +75,46 @@ func New(ctx context.Context) (*App, error) {
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
 	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC)
 
+	a := &App{router: router, mongoClient: mongoClient}
 
-	return &App{router: router, mongoClient: mongoClient}, nil
+	// ── Seed Mock Data ────────────────────────────────────────────────────────
+	if err := a.seedData(ctx, orgRepo, nodeRepo); err != nil {
+		log.Error().Err(err).Msg("failed to seed initial data")
+	}
+
+	return a, nil
+}
+
+func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, nodeRepo services.NodeRepository) error {
+	orgId := "SNAPBITE_ORG"
+	nodeId := "CUA_HANG_01"
+
+	// 1. Ensure Org exists
+	existingOrg, _ := orgRepo.FindByID(ctx, orgId)
+	if existingOrg == nil {
+		log.Info().Msg("Seeding SnapBite Organization...")
+		_ = orgRepo.Create(ctx, &models.Organization{
+			ID:   orgId,
+			Name: "SnapBite Chain",
+		})
+	}
+
+	// 2. Ensure Node exists
+	existingNode, _ := nodeRepo.FindByID(ctx, nodeId)
+	if existingNode == nil {
+		log.Info().Msg("Seeding Store Node: CUA_HANG_01...")
+		_ = nodeRepo.Create(ctx, &models.Node{
+			ID:        nodeId,
+			OrgID:     orgId,
+			Type:      "STORE",
+			Name:      "SnapBite # Hoàng Hoa Thám",
+			Address:   "123 Hoàng Hoa Thám, Ba Đình, Hà Nội",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		})
+	}
+
+	return nil
 }
 
 // Run starts the HTTP server.

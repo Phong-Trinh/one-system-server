@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"one-system-server/internal/domain/models"
 	"one-system-server/internal/usecase"
 )
 
@@ -19,15 +20,16 @@ func newStationTypeHandler(uc usecase.StationTypeUseCase) *stationTypeHandler {
 // POST /api/v1/station-types
 func (h *stationTypeHandler) Create(c *gin.Context) {
 	var req struct {
-		ID           string `json:"id"            binding:"required"`
-		Name         string `json:"name"          binding:"required"`
-		CapacityUnit string `json:"capacity_unit" binding:"required"`
+		ID              string                    `json:"id"               binding:"required"`
+		Name            string                    `json:"name"             binding:"required"`
+		CapacityUnit    string                    `json:"capacity_unit"    binding:"required"`
+		DefaultStrategy models.AllocationStrategy `json:"default_strategy" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	st, err := h.uc.Create(c.Request.Context(), req.ID, req.Name, req.CapacityUnit)
+	st, err := h.uc.Create(c.Request.Context(), req.ID, req.Name, req.CapacityUnit, req.DefaultStrategy)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -58,14 +60,15 @@ func (h *stationTypeHandler) GetByID(c *gin.Context) {
 // PUT /api/v1/station-types/:id
 func (h *stationTypeHandler) Update(c *gin.Context) {
 	var req struct {
-		Name         string `json:"name"          binding:"required"`
-		CapacityUnit string `json:"capacity_unit" binding:"required"`
+		Name            string                    `json:"name"             binding:"required"`
+		CapacityUnit    string                    `json:"capacity_unit"    binding:"required"`
+		DefaultStrategy models.AllocationStrategy `json:"default_strategy" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	st, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.Name, req.CapacityUnit)
+	st, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.Name, req.CapacityUnit, req.DefaultStrategy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

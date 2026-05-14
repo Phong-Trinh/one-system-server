@@ -20,15 +20,26 @@ const collStationTypes = "station_types"
 type stationTypeDoc struct {
 	ID           string `bson:"_id"`
 	Name         string `bson:"name"`
-	CapacityUnit string `bson:"capacity_unit"`
+	CapacityUnit    string                   `bson:"capacity_unit"`
+	DefaultStrategy models.AllocationStrategy `bson:"default_strategy"`
 }
 
 func stationTypeToDoc(s *models.StationType) *stationTypeDoc {
-	return &stationTypeDoc{ID: s.ID, Name: s.Name, CapacityUnit: s.CapacityUnit}
+	return &stationTypeDoc{
+		ID:              s.ID,
+		Name:            s.Name,
+		CapacityUnit:    s.CapacityUnit,
+		DefaultStrategy: s.DefaultStrategy,
+	}
 }
 
 func docToStationType(d *stationTypeDoc) *models.StationType {
-	return &models.StationType{ID: d.ID, Name: d.Name, CapacityUnit: d.CapacityUnit}
+	return &models.StationType{
+		ID:              d.ID,
+		Name:            d.Name,
+		CapacityUnit:    d.CapacityUnit,
+		DefaultStrategy: d.DefaultStrategy,
+	}
 }
 
 // ── Repository ────────────────────────────────────────────────────────────────

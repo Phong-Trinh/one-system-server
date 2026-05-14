@@ -38,7 +38,7 @@ type SOPStep struct {
 	DependsOn            []string `json:"depends_on"`                // IDs of steps that must complete before this one
 	StationTypeID        string   `json:"station_type_id,omitempty"` // FK → StationType — optional (manual steps)
 	SlotConsumption      float64  `json:"slot_consumption"`          // Capacity units per 1 base unit of item in this step
-	AllowMix             bool     `json:"allow_mix"`                 // Whether this step can share a machine with other items/steps
+	AllowMix             bool     `json:"allow_mix"`                 //AllowMix thể hiện SOP step này có thể làm cùng với các step khác nếu chung một điều kiện hay kh                // Whether this step can share a machine with other items/steps
 	IngredientBOMLineIDs []string `json:"ingredient_bom_line_ids"`   // FKs → BOMLine.ID (ingredients added in this step)
 	Duration             int      `json:"duration"`                  // Estimated duration in seconds
 	Description          string   `json:"description"`               // Human-readable instruction

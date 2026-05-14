@@ -21,7 +21,6 @@ type machineDoc struct {
 	StationTypeID        string                   `bson:"station_type_id"`
 	NodeID               string                   `bson:"node_id"`
 	MaxCapacity          float64                  `bson:"max_capacity"`
-	OperationalThreshold float64                  `bson:"operational_threshold"`
 	AllocationStrategy   models.AllocationStrategy `bson:"allocation_strategy"`
 	Status               models.MachineStatus     `bson:"status"`
 	CurrentBatchID       *string                  `bson:"current_batch_id,omitempty"`
@@ -33,7 +32,6 @@ func machineToDoc(m *models.Machine) *machineDoc {
 		StationTypeID:        m.StationTypeID,
 		NodeID:               m.NodeID,
 		MaxCapacity:          m.MaxCapacity,
-		OperationalThreshold: m.OperationalThreshold,
 		AllocationStrategy:   m.AllocationStrategy,
 		Status:               m.Status,
 		CurrentBatchID:       m.CurrentBatchID,
@@ -46,7 +44,6 @@ func docToMachine(d *machineDoc) *models.Machine {
 		StationTypeID:        d.StationTypeID,
 		NodeID:               d.NodeID,
 		MaxCapacity:          d.MaxCapacity,
-		OperationalThreshold: d.OperationalThreshold,
 		AllocationStrategy:   d.AllocationStrategy,
 		Status:               d.Status,
 		CurrentBatchID:       d.CurrentBatchID,

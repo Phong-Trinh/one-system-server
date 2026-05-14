@@ -9,7 +9,8 @@ let editingBOMID = null;
 let editingSOPID = null;
 let editingWizardItemID = null;
 let globalNodes = [];
-let activeNodeId = localStorage.getItem('activeNodeId') || null;
+const activeNodeId = 'CUA_HANG_01'; // Hardcoded for this Store-local version
+let activeOrgId = null; // Will be fetched from node info
 
 
 // Load Initial Data
@@ -31,28 +32,58 @@ async function loadMachines() {
         const res = await fetch(url);
         if (res.ok) {
             globalMachines = await res.json();
-            renderMachinesTable();
+            renderMachinesGrid();
         }
     } catch (err) {
         console.error("Failed to load machines", err);
     }
 }
 
-function renderMachinesTable() {
-    const tbody = document.getElementById('machinesTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = "";
+function renderMachinesGrid() {
+    const grid = document.getElementById('machineGrid');
+    if (!grid) return;
+    const safeMachines = Array.isArray(globalMachines) ? globalMachines : [];
+    if (safeMachines.length === 0) {
+        grid.innerHTML = '<div class="empty-state">Chưa có thiết bị nào được đăng ký tại chi nhánh này.</div>';
+        return;
+    }
 
-    globalMachines.forEach(m => {
+    safeMachines.forEach(m => {
         const st = globalStationTypes.find(s => s.id === m.station_type_id);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td style="font-weight: 600;">${m.id}</td>
-            <td><span class="type-badge" style="background: #4b5563;">${st ? st.name : m.station_type_id}</span></td>
-            <td>${m.max_slots}</td>
-            <td><span class="status-pill status-${m.status.toLowerCase()}">${m.status}</span></td>
+        const card = document.createElement('div');
+        card.className = `machine-card ${m.status.toLowerCase() === 'idle' ? 'active' : 'busy'}`;
+
+        // Calculate capacity percentage (mock for now, should come from API)
+        const capacityUsed = m.status.toLowerCase() === 'busy' ? 75 : 0; // Example
+        const dashOffset = 251.2 - (251.2 * capacityUsed / 100);
+
+        card.innerHTML = `
+            <div class="machine-card-header">
+                <div>
+                    <h4>${m.id}</h4>
+                    <span class="machine-type-tag">${st ? st.name : m.station_type_id}</span>
+                </div>
+                <span class="strategy-badge">${m.allocation_strategy}</span>
+            </div>
+            
+            <div class="capacity-indicator">
+                <svg class="capacity-svg" viewBox="0 0 100 100">
+                    <circle class="capacity-circle-bg" cx="50" cy="50" r="40"></circle>
+                    <circle class="capacity-circle-progress" cx="50" cy="50" r="40" 
+                        style="stroke-dasharray: 251.2; stroke-dashoffset: ${dashOffset}; stroke: ${capacityUsed > 80 ? 'var(--accent)' : 'var(--success)'}">
+                    </circle>
+                </svg>
+                <div class="capacity-text">${capacityUsed}%</div>
+            </div>
+
+            <div class="machine-meta">
+                <div class="meta-item">
+                    <span class="meta-val">${m.max_capacity} ${st ? st.capacity_unit : ''}</span>
+                    Sức chứa
+                </div>
+            </div>
         `;
-        tbody.appendChild(tr);
+        grid.appendChild(card);
     });
 }
 
@@ -74,81 +105,70 @@ async function loadNodes() {
         if (res.ok) {
             globalNodes = await res.json();
 
-            // Cập nhật Selector Chi nhánh toàn cục
-            const globalSelect = document.getElementById('globalNodeSelect');
-            if (globalSelect) {
-                globalSelect.innerHTML = '<option value="">-- Chọn Chi nhánh --</option>';
-                globalNodes.forEach(node => {
-                    const opt = document.createElement('option');
-                    opt.value = node.id;
-                    opt.textContent = `${node.name} (${node.type})`;
-                    globalSelect.appendChild(opt);
-                });
-
-                if (activeNodeId) {
-                    globalSelect.value = activeNodeId;
-                } else if (globalNodes.length > 0) {
-                    // Mặc định chọn node đầu tiên nếu chưa có session
-                    activeNodeId = globalNodes[0].id;
-                    globalSelect.value = activeNodeId;
-                    localStorage.setItem('activeNodeId', activeNodeId);
-                }
+            // Auto-detect OrgID for our hardcoded store
+            const node = globalNodes.find(n => n.id === activeNodeId);
+            if (node) {
+                activeOrgId = node.org_id;
             }
 
             updatePOSelects();
-            renderNodesList();
         }
     } catch (err) {
         console.error("Failed to load nodes", err);
     }
 }
 
+// Dynamic switching disabled for Store-local version
 function switchNodeContext(nodeId) {
-    if (!nodeId) return;
-    activeNodeId = nodeId;
-    localStorage.setItem('activeNodeId', nodeId);
-
-    // Tìm OrgID tương ứng với Node này
-    const node = globalNodes.find(n => n.id === nodeId);
-    if (node) {
-        activeOrgId = node.org_id;
-        localStorage.setItem('activeOrgId', activeOrgId);
-    }
-
-    // Refresh relevant data for this node/org
-    loadMachines();
-    loadProductionOrders();
-    loadItems(); // Lọc lại danh mục sản phẩm theo Org
-
-    // Update local selects to match
-    const poNodeSelect = document.getElementById('poNodeSelect');
-    if (poNodeSelect) poNodeSelect.value = nodeId;
-
-    const machineNodeSelect = document.getElementById('machineNodeId');
-    if (machineNodeSelect) machineNodeSelect.value = nodeId;
+    console.log("Node context fixed to:", activeNodeId);
 }
 
 function updatePOSelects() {
-    const nodeSelect = document.getElementById('poNodeSelect');
-    if (!nodeSelect) return;
-
-    nodeSelect.innerHTML = '<option value="" disabled selected>Chọn bếp thực hiện...</option>';
-    globalNodes.forEach(node => {
-        const opt = document.createElement('option');
-        opt.value = node.id;
-        opt.textContent = `${node.name} (${node.type})`;
-        nodeSelect.appendChild(opt);
-    });
-
     const itemSelect = document.getElementById('poItemSelect');
     if (!itemSelect) return;
     itemSelect.innerHTML = '<option value="" disabled selected>Chọn món cần sản xuất...</option>';
 
-    globalItems.filter(i => i.type !== 'RAW_MATERIAL').forEach(item => {
+    const safeItems = Array.isArray(globalItems) ? globalItems : [];
+    safeItems.filter(i => i.type !== 'RAW_MATERIAL').forEach(item => {
         const opt = document.createElement('option');
         opt.value = item.id;
         opt.textContent = `${item.name} (${item.type})`;
         itemSelect.appendChild(opt);
+    });
+}
+
+function updateWizStationSelects() {
+    const selects = document.querySelectorAll('.wiz-station-input');
+    selects.forEach(select => {
+        const val = select.value;
+        select.innerHTML = '<option value="" disabled selected>Chọn loại thiết bị...</option>';
+
+        const safeTypes = Array.isArray(globalStationTypes) ? globalStationTypes : [];
+        safeTypes.forEach(st => {
+            const opt = document.createElement('option');
+            opt.value = st.id;
+            opt.textContent = st.name;
+            select.appendChild(opt);
+        });
+        select.value = val;
+    });
+}
+
+function updateWizItemSelects() {
+    const selects = document.querySelectorAll('.wiz-item-id-input, .wiz-step-ingredients-select');
+    selects.forEach(select => {
+        const val = select.value;
+        const placeholder = select.classList.contains('wiz-item-id-input') ? 'Chọn nguyên liệu...' : '+ Thêm nguyên liệu từ BOM...';
+        select.innerHTML = `<option value="" disabled selected>${placeholder}</option>`;
+
+        const safeItems = Array.isArray(globalItems) ? globalItems : [];
+        safeItems.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = `${item.name} (${item.type})`;
+            select.appendChild(opt);
+        });
+        select.value = val;
     });
 }
 
@@ -158,48 +178,172 @@ async function loadItems() {
         const url = activeOrgId ? `${API_BASE}/items?org_id=${activeOrgId}` : `${API_BASE}/items`;
         const res = await fetch(url);
         if (res.ok) {
-            globalItems = await res.json();
-            updateAllItemSelects();
-            updatePOSelects(); // Thêm dòng này để cập nhật dropdown tab Sản xuất
+            const data = await res.json();
+            globalItems = Array.isArray(data) ? data : [];
 
-
-            // Cập nhật các select box trong Wizard
-            const typeSelect = document.getElementById('wizItemType');
-            const isProduct = typeSelect ? typeSelect.value === 'PRODUCT' : false;
-            updateWizIngredientSelects(isProduct);
-
-            renderItemsTable(); // Đổ dữ liệu vào bảng
+            updateWizItemSelects();
+            updatePOSelects();
+            renderItemGrid();
         }
     } catch (err) {
         console.error("Failed to load items", err);
     }
 }
 
-function renderItemsTable(filter = "") {
-    const tbody = document.getElementById('itemsTableBody');
-    tbody.innerHTML = "";
+let currentItemTypeFilter = 'ALL';
 
-    const filtered = globalItems.filter(item =>
-        item.name.toLowerCase().includes(filter.toLowerCase()) ||
-        (item.sku && item.sku.toLowerCase().includes(filter.toLowerCase()))
-    );
+function filterItemType(type) {
+    currentItemTypeFilter = type;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick').includes(type));
+    });
+    renderItemGrid();
+}
+
+function renderItemGrid(searchTerm = "") {
+    const grid = document.getElementById('itemGrid');
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    const safeItems = Array.isArray(globalItems) ? globalItems : [];
+    const filtered = safeItems.filter(item => {
+        if (!item) return false;
+        const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.sku && item.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesType = currentItemTypeFilter === 'ALL' || item.type === currentItemTypeFilter;
+        return matchesSearch && matchesType;
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-state">Không tìm thấy kết quả phù hợp.</div>';
+        return;
+    }
 
     filtered.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-        <td>${item.name}</td>
-        <td>${item.sku || '-'}</td>
-        <td><span class="badge">${item.type}</span></td>
-        <td>${item.base_unit}</td>
-        <td>
-            <button class="btn-edit" onclick="editItem('${item.id}')" title="Sửa thông tin cơ bản">✏️</button>
-            <button class="btn-primary" onclick="editBOMSOP('${item.id}')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">⚙️ BOM/SOP</button>
-            ${(item.type === 'PRODUCT' || item.type === 'SEMI_PRODUCT') ?
-                `<button class="btn-accent" onclick="prepareProductionOrder('${item.id}')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">🔥 Sản xuất</button>` : ''}
-        </td>
-    `;
-        tbody.appendChild(tr);
+        const card = document.createElement('div');
+        card.className = `item-card ${item.type.toLowerCase().replace('_', '-')}`;
+
+        const hasProcess = item.type === 'PRODUCT' || item.type === 'SEMI_PRODUCT';
+
+        card.innerHTML = `
+            <div class="item-card-header">
+                <div>
+                    <h4>${item.name}</h4>
+                    <span class="item-sku">${item.sku || 'Không có SKU'}</span>
+                </div>
+                <span class="badge" style="font-size: 0.6rem;">${item.type}</span>
+            </div>
+            <div class="item-card-footer">
+                <span class="item-unit">📦 ${item.base_unit}</span>
+                <div class="card-actions">
+                    <button class="btn-edit" onclick="event.stopPropagation(); editItem('${item.id}')" title="Sửa thông tin cơ bản">✏️</button>
+                    ${hasProcess ? `<button class="btn-primary" onclick="event.stopPropagation(); openItemDetail('${item.id}')" style="font-size: 0.7rem; padding: 0.3rem 0.6rem;">👁️ Xem Quy trình</button>` : ''}
+                </div>
+            </div>
+        `;
+
+        card.onclick = () => {
+            if (hasProcess) openItemDetail(item.id);
+            else editItem(item.id);
+        };
+
+        grid.appendChild(card);
     });
+}
+
+function openQuickAddRawMaterial() {
+    editingItemId = null;
+    document.getElementById('itemForm').reset();
+    document.getElementById('itemType').value = 'RAW_MATERIAL';
+    document.getElementById('itemSubmitBtn').textContent = "Tạo mới";
+    document.getElementById('editItemOverlay').classList.add('active');
+}
+
+function closeEditItem() {
+    document.getElementById('editItemOverlay').classList.remove('active');
+}
+
+async function openItemDetail(itemId) {
+    const item = globalItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    document.getElementById('detailItemName').textContent = item.name;
+    document.getElementById('detailItemBadge').textContent = item.type;
+    document.getElementById('detailItemBadge').className = `badge ${item.type.toLowerCase().replace('_', '-')}`;
+
+    // Clear lists
+    document.getElementById('detailBomList').innerHTML = '<li>Đang tải...</li>';
+    document.getElementById('detailMermaid').innerHTML = '<div class="empty-state">Đang tải...</div>';
+
+    document.getElementById('itemDetailModal').classList.add('active');
+
+    try {
+        // 1. Fetch BOM
+        const bomRes = await fetch(`${API_BASE}/production/boms/by-item/${itemId}`);
+        if (bomRes.ok) {
+            const bomData = await bomRes.json();
+            const bomId = bomData.bom.id;
+
+            // Render BOM Lines
+            document.getElementById('detailBomList').innerHTML = bomData.lines.map(line => {
+                const ing = globalItems.find(i => i.id === line.item_id);
+                return `<li><span>${ing ? ing.name : 'Unknown'}</span> <strong>${line.qty} ${ing ? ing.base_unit : ''}</strong></li>`;
+            }).join('');
+
+            // 2. Fetch SOP
+            const sopRes = await fetch(`${API_BASE}/production/sops/by-bom/${bomId}`);
+            if (sopRes.ok) {
+                const sopData = await sopRes.json();
+                renderDetailSOP(sopData.steps);
+            } else {
+                document.getElementById('detailMermaid').innerHTML = '<div class="empty-state">Chưa có quy trình (SOP).</div>';
+            }
+        } else {
+            document.getElementById('detailBomList').innerHTML = '<li>Chưa có định mức (BOM).</li>';
+            document.getElementById('detailMermaid').innerHTML = '<div class="empty-state">Chưa có dữ liệu sản xuất.</div>';
+        }
+    } catch (err) {
+        console.error("Detail load error", err);
+    }
+
+    document.getElementById('detailEditBtn').onclick = () => {
+        closeItemDetail();
+        editBOMSOP(itemId);
+    };
+}
+
+function renderDetailSOP(steps) {
+    if (!steps || steps.length === 0) {
+        document.getElementById('detailMermaid').innerHTML = '<div class="empty-state">Chưa có các bước thực hiện.</div>';
+        return;
+    }
+
+    let graph = 'graph TD;\n';
+    steps.forEach((step, idx) => {
+        const num = idx + 1;
+        const station = globalStationTypes.find(s => s.id === step.station_type_id);
+        const nodeLabel = `"${num}. ${step.description.replace(/"/g, "'")}\\n[${station ? station.name : 'Manual'}]"`;
+        graph += `  S${num}[${nodeLabel}]\n`;
+
+        step.depends_on.forEach(depId => {
+            const depIdx = steps.findIndex(s => s.id === depId);
+            if (depIdx !== -1) {
+                graph += `  S${depIdx + 1} --> S${num}\n`;
+            }
+        });
+    });
+
+    try {
+        mermaid.render('detailGraph', graph).then(({ svg }) => {
+            document.getElementById('detailMermaid').innerHTML = svg;
+        });
+    } catch (err) {
+        console.error("Mermaid detail error", err);
+    }
+}
+
+function closeItemDetail() {
+    document.getElementById('itemDetailModal').classList.remove('active');
 }
 
 function prepareProductionOrder(itemId) {
@@ -258,13 +402,12 @@ function editItem(id) {
     submitBtn.textContent = "Cập nhật thay đổi";
     submitBtn.classList.replace('btn-primary', 'btn-accent');
 
-    // Cuộn lên đầu trang
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('editItemOverlay').classList.add('active');
 }
 
 // Xử lý tìm kiếm
-document.getElementById('itemSearchInput').addEventListener('input', (e) => {
-    renderItemsTable(e.target.value);
+document.getElementById('itemSearchInput')?.addEventListener('input', (e) => {
+    renderItemGrid(e.target.value);
 });
 
 function updateAllItemSelects() {
@@ -437,6 +580,23 @@ async function editBOMSOP(itemId) {
     goToStep(1);
 }
 
+function goToStep(step) {
+    // Hide all steps
+    document.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
+    // Show target step
+    const target = document.getElementById(`wizard-step-${step}`);
+    if (target) target.style.display = 'block';
+
+    // Update indicators
+    document.querySelectorAll('.step-indicator').forEach((ind, index) => {
+        if (index < step) {
+            ind.classList.add('active');
+        } else {
+            ind.classList.remove('active');
+        }
+    });
+}
+
 // WIZARD LOGIC
 function nextWizardStep(step) {
     // Validate Step 1 before moving to Step 2
@@ -445,16 +605,18 @@ function nextWizardStep(step) {
         if (!name) return alert("Vui lòng nhập tên món!");
 
         // Kiểm tra trùng tên
-        const isDuplicate = globalItems.some(i => i.name.toLowerCase() === name.toLowerCase());
+        const safeItems = Array.isArray(globalItems) ? globalItems : [];
+        const isDuplicate = safeItems.some(i => i && i.name && i.name.toLowerCase() === name.toLowerCase() && i.id !== editingWizardItemID);
         if (isDuplicate) {
             const confirmDup = confirm(`Cảnh báo: Nguyên liệu/Món ăn mang tên "${name}" đã tồn tại trong hệ thống! Bạn có chắc chắn muốn tạo thêm một bản ghi trùng tên không?`);
             if (!confirmDup) return;
         }
 
         // Cập nhật cảnh báo và danh sách thả xuống ở Step 2
-        const type = document.getElementById('wizItemType').value;
+        const typeSelect = document.getElementById('wizItemType');
+        const type = typeSelect ? typeSelect.value : 'PRODUCT';
         const warning = document.getElementById('bomWarning');
-        warning.style.display = type === 'PRODUCT' ? 'block' : 'none';
+        if (warning) warning.style.display = type === 'PRODUCT' ? 'block' : 'none';
 
         // Populate current ingredients with filtered options
         updateWizIngredientSelects(type === 'PRODUCT');
@@ -473,38 +635,22 @@ function nextWizardStep(step) {
         const bomRows = document.getElementById('wizIngredientsList').querySelectorAll('.list-row').length;
         const sopRows = document.getElementById('wizStepsList').querySelectorAll('.list-row').length;
 
-        document.getElementById('wizardSummary').innerHTML = `
-        <p><strong>Tên món:</strong> ${name}</p>
-        <p><strong>Loại:</strong> ${type}</p>
-        <p><strong>Thành phần (BOM):</strong> ${bomRows} nguyên liệu</p>
-        <p><strong>Công đoạn (SOP):</strong> ${sopRows} bước</p>
-    `;
+        const summary = document.getElementById('wizardSummary');
+        if (summary) {
+            summary.innerHTML = `
+                <p><strong>Tên món:</strong> ${name}</p>
+                <p><strong>Loại:</strong> ${type}</p>
+                <p><strong>Thành phần (BOM):</strong> ${bomRows} nguyên liệu</p>
+                <p><strong>Công đoạn (SOP):</strong> ${sopRows} bước</p>
+            `;
+        }
     }
 
-    // Đổi view
-    document.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
-    document.getElementById(`wizard-step-${step}`).style.display = 'block';
-
-    document.querySelectorAll('.step-indicator').forEach((ind, index) => {
-        if (index < step) {
-            ind.classList.add('active');
-        } else {
-            ind.classList.remove('active');
-        }
-    });
+    goToStep(step);
 }
 
 function prevWizardStep(step) {
-    document.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
-    document.getElementById(`wizard-step-${step}`).style.display = 'block';
-
-    document.querySelectorAll('.step-indicator').forEach((ind, index) => {
-        if (index < step) {
-            ind.classList.add('active');
-        } else {
-            ind.classList.remove('active');
-        }
-    });
+    goToStep(step);
 }
 
 function addWizIngredientRow() {
@@ -545,6 +691,7 @@ function updateWizIngredientSelects(onlyRawAndSemi) {
         const currentVal = select.value;
         select.innerHTML = '<option value="" disabled selected>Chọn nguyên liệu...</option>';
         safeItems.forEach(item => {
+            if (!item) return;
             if (onlyRawAndSemi && item.type === 'PRODUCT') return; // Bỏ qua Product nếu món đang tạo là Product
 
             const opt = document.createElement('option');
@@ -627,9 +774,28 @@ function addWizStepRow() {
         }
     });
 
-    // Listen to changes to update graph
+    // Listen to changes to update graph and UI labels
+    selectStation.addEventListener('change', (e) => {
+        const stId = e.target.value;
+        const st = globalStationTypes.find(s => s.id === stId);
+        const badge = row.querySelector('.wiz-strategy-badge');
+        const unitLabel = row.querySelector('.wiz-unit-label');
+
+        if (st) {
+            // Update Unit
+            unitLabel.textContent = st.capacity_unit;
+
+            // Update Strategy Badge
+            badge.style.display = 'flex';
+            const isBatch = st.default_strategy === 'BATCH_SYNC';
+            badge.querySelector('.strategy-icon').textContent = isBatch ? "🔒" : "⏲️";
+            badge.querySelector('.strategy-name').textContent = isBatch ? "Batch" : "Async";
+            badge.title = isBatch ? "Khóa theo mẻ (Sync)" : "Nấu tự do (Async)";
+        }
+        updateSOPPreview();
+    });
+
     clone.querySelector('.wiz-desc-input').addEventListener('input', updateSOPPreview);
-    clone.querySelector('.wiz-station-input').addEventListener('change', updateSOPPreview);
 
     document.getElementById('wizStepsList').appendChild(clone);
     updateWizStationSelects();
@@ -702,10 +868,16 @@ function updateSOPPreview() {
 
     stepsData.forEach(step => {
         const safeDesc = step.desc.replace(/["\\]/g, '');
-        const safeStation = step.station && step.station !== 'Chọn trạm (Station)' ? `\\n[${step.station.replace(/["\\]/g, '')}]` : '';
+        const st = globalStationTypes.find(s => s.name === step.station);
+        const isManual = !st;
+
+        const safeStation = step.station && step.station !== 'Chọn loại thiết bị...' ? `\\n[${step.station.replace(/["\\]/g, '')}]` : '';
         const nodeLabel = `"${step.num}. ${safeDesc}${safeStation}"`;
 
-        graphDef += `  ${step.id}[${nodeLabel}]\n`;
+        // Use different shapes for machine vs manual steps
+        const nodeShape = isManual ? `([${nodeLabel}])` : `[${nodeLabel}]`;
+        graphDef += `  ${step.id}${nodeShape}\n`;
+        if (!isManual) graphDef += `  style ${step.id} fill:#6366f1,stroke:#4f46e5,stroke-width:2px,color:#fff\n`;
 
         // Remove invalid badges and add valid edges
         step.deps.forEach(depId => {
@@ -843,6 +1015,8 @@ async function submitWizard() {
                 const desc = row.querySelector('.wiz-desc-input').value;
                 const dependsOn = Array.from(row.querySelectorAll('.dep-badge[data-dep-id]')).map(b => b.getAttribute('data-dep-id'));
                 const ingredients = Array.from(row.querySelectorAll('.dep-badge[data-line-id]')).map(b => b.getAttribute('data-line-id'));
+                const slots = parseFloat(row.querySelector('.wiz-slots-input').value) || 1;
+                const allowMix = row.querySelector('.wiz-mix-input').checked;
 
                 if (duration) {
                     steps.push({
@@ -851,7 +1025,9 @@ async function submitWizard() {
                         station_type_id: stationId || "",
                         ingredient_bom_line_ids: ingredients,
                         duration: duration,
-                        description: desc
+                        description: desc,
+                        slot_consumption: slots,
+                        allow_mix: allowMix
                     });
                 }
             });
@@ -885,9 +1061,62 @@ async function submitWizard() {
     }
 }
 
+function resetWizard() {
+    editingWizardItemID = null;
+    editingBOMID = null;
+    editingSOPID = null;
+
+    document.getElementById('wizItemName').value = "";
+    document.getElementById('wizItemSku').value = "";
+    document.getElementById('wizItemType').value = "PRODUCT";
+    document.getElementById('wizItemBaseUnit').value = "";
+
+    document.getElementById('wizIngredientsList').innerHTML = "";
+    document.getElementById('wizStepsList').innerHTML = "";
+    document.getElementById('mermaidPreview').innerHTML = '<div class="empty-state">Thêm bước để xem sơ đồ...</div>';
+
+    goToStep(1);
+}
+
 // ---------------------------------------------------------
 // EVENT LISTENERS
 // ---------------------------------------------------------
+
+// Sidebar Navigation
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+        const targetId = item.getAttribute('data-target');
+        console.log("Navigating to:", targetId);
+
+        // Special case for Wizard: Open as Modal
+        if (targetId === 'wizard-section') {
+            openWizardModal();
+            return;
+        }
+
+        // 1. Update Sidebar UI
+        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+        item.classList.add('active');
+
+        // 2. Switch Sections
+        const allSections = document.querySelectorAll('.section-card');
+        console.log("Found sections:", allSections.length);
+        allSections.forEach(sec => {
+            // Keep sections inside modals as active if they are (to not break modal internal layout)
+            if (sec.closest('.modal')) return;
+            sec.classList.remove('active');
+            console.log("Deactivating:", sec.id);
+        });
+
+        const targetSec = document.getElementById(targetId);
+        if (targetSec) {
+            targetSec.classList.add('active');
+            console.log("Section activated:", targetId);
+        } else {
+            console.error("Target section not found:", targetId);
+        }
+    });
+});
 
 // Item Form (Simple Add)
 document.getElementById('itemForm')?.addEventListener('submit', async (e) => {
@@ -917,6 +1146,7 @@ document.getElementById('itemForm')?.addEventListener('submit', async (e) => {
             const submitBtn = document.getElementById('itemSubmitBtn');
             submitBtn.textContent = "Tạo mới";
             submitBtn.classList.replace('btn-accent', 'btn-primary');
+            closeEditItem();
             loadItems();
         } else {
             alert("Lỗi: " + (data.error || JSON.stringify(data)));
@@ -924,6 +1154,10 @@ document.getElementById('itemForm')?.addEventListener('submit', async (e) => {
     } catch (err) {
         alert("Lỗi kết nối: " + err.message);
     }
+});
+
+document.getElementById('itemSearchInput')?.addEventListener('input', (e) => {
+    renderItemGrid(e.target.value);
 });
 
 // Quick Add Item Modal
@@ -962,17 +1196,48 @@ document.getElementById('cancelQuickCreate')?.addEventListener('click', () => {
 });
 
 // Quick Add Station Modal
+document.getElementById('stationTemplateSelect')?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    const nameInput = document.getElementById('quickStationName');
+    const unitInput = document.getElementById('quickStationUnit');
+    const idInput = document.getElementById('quickStationId');
+    const strategyInput = document.getElementById('quickStationStrategy');
+
+    const templates = {
+        'GRILL': { name: 'Bếp nướng / Áp chảo', unit: 'phần', id: 'bep_nuong', strategy: 'SLOT_ASYNC' },
+        'FRYER': { name: 'Nồi chiên / Lò quay', unit: 'lít', id: 'noi_chien', strategy: 'BATCH_SYNC' },
+        'OVEN': { name: 'Lò nướng khay', unit: 'khay', id: 'lo_nuong', strategy: 'BATCH_SYNC' },
+        'MANUAL': { name: 'Sơ chế / Thao tác tay', unit: 'phần', id: 'thao_tac_tay', strategy: 'SLOT_ASYNC' },
+        'MIXER': { name: 'Máy trộn bột', unit: 'mẻ', id: 'may_tron_bot', strategy: 'BATCH_SYNC' },
+        'PROOFER': { name: 'Tủ ủ bột', unit: 'khay', id: 'tu_u_bot', strategy: 'SLOT_ASYNC' },
+        'BAKE_OVEN': { name: 'Lò nướng bánh', unit: 'khay', id: 'lo_nuong_banh', strategy: 'BATCH_SYNC' }
+    };
+
+    if (templates[val]) {
+        nameInput.value = templates[val].name;
+        unitInput.value = templates[val].unit;
+        idInput.value = templates[val].id;
+        strategyInput.value = templates[val].strategy;
+    }
+});
+
 document.getElementById('quickStationForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const id = document.getElementById('quickStationId').value;
+    const id = document.getElementById('quickStationId').value || `st_${Date.now()}`;
     const name = document.getElementById('quickStationName').value;
     const unit = document.getElementById('quickStationUnit').value;
+    const strategy = document.getElementById('quickStationStrategy').value;
 
     try {
         const res = await fetch(`${API_BASE}/station-types`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, capacity_unit: unit })
+            body: JSON.stringify({
+                id,
+                name,
+                capacity_unit: unit,
+                default_strategy: strategy
+            })
         });
         const data = await res.json();
         if (res.ok) {
@@ -1000,18 +1265,29 @@ document.getElementById('machineForm')?.addEventListener('submit', async (e) => 
     e.preventDefault();
     const id = document.getElementById('machineId').value;
     const stationTypeId = document.getElementById('machineStationType').value;
-    const nodeId = document.getElementById('machineNodeId').value;
-    const maxSlots = parseInt(document.getElementById('machineCapacity').value);
+
+    // Get strategy from the hidden input (inherited from Station Type)
+    const strategy = document.getElementById('machineStrategy').value;
+    const maxSlots = parseFloat(document.getElementById('machineCapacity').value);
 
     try {
         const res = await fetch(`${API_BASE}/machines`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, station_type_id: stationTypeId, node_id: nodeId, max_slots: maxSlots })
+            body: JSON.stringify({
+                id,
+                station_type_id: stationTypeId,
+                node_id: activeNodeId,
+                max_capacity: maxSlots,
+                allocation_strategy: strategy
+            })
         });
         if (res.ok) {
-            alert("✅ Đã đăng ký máy thành công!");
+            alert("✨ Thiết bị đã được kích hoạt và sẵn sàng vận hành!");
             document.getElementById('machineForm').reset();
+            // Reset capacity label
+            document.getElementById('capacityUnitLabel').textContent = "(theo loại máy)";
+            document.getElementById('machineCapacity').disabled = true;
             loadMachines();
         } else {
             const data = await res.json();
@@ -1019,6 +1295,42 @@ document.getElementById('machineForm')?.addEventListener('submit', async (e) => 
         }
     } catch (err) {
         alert("Lỗi kết nối: " + err.message);
+    }
+});
+
+// Sync Capacity Label and Strategy with Station Type selection
+document.getElementById('machineStationType')?.addEventListener('change', (e) => {
+    const stId = e.target.value;
+    const st = globalStationTypes.find(s => s.id === stId);
+
+    const unitLabel = document.getElementById('capacityUnitLabel');
+    const capacityInput = document.getElementById('machineCapacity');
+    const capacityHint = document.getElementById('capacityHint');
+
+    const strategyInput = document.getElementById('machineStrategy');
+    const strategyName = document.getElementById('inheritedStrategyName');
+    const strategyIcon = document.getElementById('inheritedStrategyIcon');
+    const strategyDesc = document.getElementById('inheritedStrategyDesc');
+
+    if (st) {
+        // Update Capacity UI
+        unitLabel.textContent = `(${st.capacity_unit})`;
+        capacityInput.disabled = false;
+        capacityInput.placeholder = `Vd: 8 ${st.capacity_unit}`;
+        capacityHint.textContent = `Vui lòng nhập số ${st.capacity_unit} tối đa máy này có thể xử lý.`;
+
+        // Update Strategy UI
+        const isBatch = st.default_strategy === 'BATCH_SYNC';
+        strategyInput.value = st.default_strategy;
+        strategyName.textContent = isBatch ? "Khóa theo mẻ (Batch Mode)" : "Nấu rảnh tay (Free-flow)";
+        strategyIcon.textContent = isBatch ? "🔒" : "⏲️";
+        strategyDesc.textContent = isBatch
+            ? "Phù hợp cho Nồi chiên, Lò quay. Khóa máy khi đang nấu."
+            : "Phù hợp cho Bếp nướng, Vỉ áp chảo. Vào/Ra tự do.";
+    } else {
+        unitLabel.textContent = "(theo loại máy)";
+        capacityInput.disabled = true;
+        capacityHint.textContent = "Chọn loại máy ở trên để xác định đơn vị đo.";
     }
 });
 
@@ -1041,7 +1353,7 @@ document.getElementById('poForm')?.addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 bom_id: bomId,
-                node_id: nodeId,
+                node_id: activeNodeId,
                 target_qty: qty
             })
         });
@@ -1089,12 +1401,14 @@ function renderOrdersList(orders) {
     if (!list) return;
     list.innerHTML = "";
 
-    if (orders.length === 0) {
+    const safeOrders = Array.isArray(orders) ? orders : [];
+
+    if (safeOrders.length === 0) {
         list.innerHTML = '<div class="empty-state">Chưa có lệnh sản xuất nào.</div>';
         return;
     }
 
-    orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach(order => {
+    [...safeOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach(order => {
         const item = globalItems.find(i => i.id === order.item_id);
         const node = globalNodes.find(n => n.id === order.node_id);
         const card = document.createElement('div');
@@ -1212,6 +1526,22 @@ window.editBOMSOP = editBOMSOP;
 window.prepareProductionOrder = prepareProductionOrder;
 window.setupSimulatedOrg = setupSimulatedOrg;
 window.switchNodeContext = switchNodeContext;
+window.filterItemType = filterItemType;
+window.openQuickAddRawMaterial = openQuickAddRawMaterial;
+window.closeEditItem = closeEditItem;
+window.openItemDetail = openItemDetail;
+window.closeItemDetail = closeItemDetail;
+window.openWizardModal = openWizardModal;
+window.closeWizardModal = closeWizardModal;
+
+function openWizardModal() {
+    resetWizard();
+    document.getElementById('wizardModal').classList.add('active');
+}
+
+function closeWizardModal() {
+    document.getElementById('wizardModal').classList.remove('active');
+}
 
 // Final Initializations
 loadInitialData();

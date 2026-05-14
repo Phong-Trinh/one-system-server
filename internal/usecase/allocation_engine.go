@@ -136,10 +136,6 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			continue
 		}
 
-		if currentLoad >= m.OperationalThreshold {
-			continue // Machine is at its human-manageable limit
-		}
-
 		// 4. Try to find matching tasks in the queue for this machine
 		for i := 0; i < len(queued); i++ {
 			b := queued[i]
@@ -153,12 +149,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 				continue
 			}
 
-			limit := m.MaxCapacity
-			if m.OperationalThreshold > 0 && m.OperationalThreshold < limit {
-				limit = m.OperationalThreshold
-			}
-
-			if currentLoad >= limit {
+			if currentLoad >= m.MaxCapacity {
 				break // Machine full for this run
 			}
 
@@ -167,6 +158,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			needsSplit := false
 			fitQty := b.Qty
 			fitSlots := b.SlotsUsed
+			limit := m.MaxCapacity
 
 			if currentLoad+b.SlotsUsed > limit {
 				// Try to split

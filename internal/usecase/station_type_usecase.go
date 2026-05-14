@@ -11,10 +11,10 @@ import (
 // ── Interface ─────────────────────────────────────────────────────────────────
 
 type StationTypeUseCase interface {
-	Create(ctx context.Context, id, name, capacityUnit string) (*models.StationType, error)
+	Create(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error)
 	GetByID(ctx context.Context, id string) (*models.StationType, error)
 	List(ctx context.Context) ([]*models.StationType, error)
-	Update(ctx context.Context, id, name, capacityUnit string) (*models.StationType, error)
+	Update(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -29,11 +29,16 @@ func NewStationTypeUseCase(repo services.StationTypeRepository) StationTypeUseCa
 }
 
 // Create uses caller-supplied id (e.g. "FRYER", "OVEN") — StationType is enum-style.
-func (uc *stationTypeUseCase) Create(ctx context.Context, id, name, capacityUnit string) (*models.StationType, error) {
+func (uc *stationTypeUseCase) Create(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error) {
 	if id == "" || name == "" || capacityUnit == "" {
 		return nil, fmt.Errorf("id, name, and capacity_unit are required")
 	}
-	st := &models.StationType{ID: id, Name: name, CapacityUnit: capacityUnit}
+	st := &models.StationType{
+		ID:              id,
+		Name:            name,
+		CapacityUnit:    capacityUnit,
+		DefaultStrategy: defaultStrategy,
+	}
 	if err := uc.repo.Create(ctx, st); err != nil {
 		return nil, err
 	}
@@ -55,7 +60,7 @@ func (uc *stationTypeUseCase) List(ctx context.Context) ([]*models.StationType, 
 	return uc.repo.FindAll(ctx)
 }
 
-func (uc *stationTypeUseCase) Update(ctx context.Context, id, name, capacityUnit string) (*models.StationType, error) {
+func (uc *stationTypeUseCase) Update(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error) {
 	st, err := uc.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -65,6 +70,7 @@ func (uc *stationTypeUseCase) Update(ctx context.Context, id, name, capacityUnit
 	}
 	st.Name = name
 	st.CapacityUnit = capacityUnit
+	st.DefaultStrategy = defaultStrategy
 	if err := uc.repo.Update(ctx, st); err != nil {
 		return nil, err
 	}
