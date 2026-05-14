@@ -24,6 +24,32 @@ type AllocationUseCase interface {
 	ConfirmCompletion(ctx context.Context, batchID string) error
 }
 
+// ── Private Helpers ───────────────────────────────────────────────────────────
+
+func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.ProductionOrder, stepID string) error {
+	step, err := uc.sopRepo.FindStepByID(ctx, stepID)
+	if err != nil || step == nil {
+		return fmt.Errorf("step %q not found", stepID)
+	}
+
+	slotsUsed := 0.0
+	if step.StationTypeID != "" {
+		slotsUsed = po.TargetQty * step.SlotConsumption
+	}
+
+	batch := &models.ProductionBatch{
+		ID:        uuid.NewString(),
+		POID:      po.ID,
+		SOPStepID: step.ID,
+		NodeID:    po.NodeID,
+		Qty:       po.TargetQty,
+		SlotsUsed: slotsUsed,
+		Status:    models.BatchQueued,
+	}
+
+	return uc.batchRepo.Create(ctx, batch)
+}
+
 // ── Implementation ────────────────────────────────────────────────────────────
 
 type allocationUseCase struct {
@@ -61,20 +87,7 @@ func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error
 	// Find steps with no dependencies (entry points)
 	for _, step := range steps {
 		if len(step.DependsOn) == 0 {
-			// Create a QUEUED batch for this step
-			// Note: In a real system, we might need to handle qty splitting here
-			// if the PO qty is massive, but for now we create one task per step.
-			batch := &models.ProductionBatch{
-				ID:        uuid.NewString(),
-				POID:      po.ID,
-				SOPStepID: step.ID,
-				NodeID:    po.NodeID,
-				Status:    models.BatchQueued,
-				// ItemID and Qty would be derived from the PO/SOP context
-				// This is a simplified version
-			}
-
-			if err := uc.batchRepo.Create(ctx, batch); err != nil {
+			if err := uc.createBatchForStep(ctx, po, step.ID); err != nil {
 				return err
 			}
 		}
@@ -135,35 +148,90 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			}
 
 			// Must match station type
-			// We need to fetch the SOPStep to know the required StationType
 			step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
 			if step == nil || step.StationTypeID != m.StationTypeID {
 				continue
 			}
 
-			// Check capacity
-			if currentLoad+b.SlotsUsed > m.MaxCapacity || currentLoad+b.SlotsUsed > m.OperationalThreshold {
-				continue
+			limit := m.MaxCapacity
+			if m.OperationalThreshold > 0 && m.OperationalThreshold < limit {
+				limit = m.OperationalThreshold
 			}
 
-			// Allocation Logic:
+			if currentLoad >= limit {
+				break // Machine full for this run
+			}
+
+			// Check capacity and handle splitting
 			canAllocate := false
+			needsSplit := false
+			fitQty := b.Qty
+			fitSlots := b.SlotsUsed
+
+			if currentLoad+b.SlotsUsed > limit {
+				// Try to split
+				if step.SlotConsumption > 0 {
+					available := limit - currentLoad
+					fitQty = float64(int(available / step.SlotConsumption)) // Greedy floor
+					if fitQty > 0 {
+						fitSlots = fitQty * step.SlotConsumption
+						needsSplit = true
+					} else {
+						continue // Cannot fit even one unit
+					}
+				} else {
+					continue // Zero consumption but still exceeds limit? Should not happen.
+				}
+			}
+
+			// Allocation Strategy Logic
 			if m.AllocationStrategy == models.StrategyAsync {
-				// SLOT_ASYNC: Always allow if capacity fits
 				canAllocate = true
 			} else {
-				// BATCH_SYNC:
-				// 1. If machine is empty, it can take anything
+				// BATCH_SYNC
 				if currentLoad == 0 {
 					canAllocate = true
 				} else if b.ItemID == referenceItemID {
-					// 2. If machine is not empty but NOT YET started,
-					// it can take more of the SAME ITEM
 					canAllocate = true
+				} else {
+					// Check if BOTH the existing steps and the new step allow mixing
+					// If any of them has AllowMix = false, they cannot be mixed.
+
+					// We need to fetch the SOPStep for the reference batch
+					refBatch, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
+					// Note: referenceItemID is tracked, but we need the SOPStep of one of the active batches
+					var refStep *models.SOPStep
+					if len(refBatch) > 0 {
+						refStep, _ = uc.sopRepo.FindStepByID(ctx, refBatch[0].SOPStepID)
+					}
+
+					if step.AllowMix && refStep != nil && refStep.AllowMix {
+						canAllocate = true
+					}
 				}
 			}
 
 			if canAllocate {
+				if needsSplit {
+					remainderQty := b.Qty - fitQty
+					// Create remainder batch
+					remainder := &models.ProductionBatch{
+						ID:        uuid.NewString(),
+						POID:      b.POID,
+						SOPStepID: b.SOPStepID,
+						NodeID:    b.NodeID,
+						ItemID:    b.ItemID,
+						Qty:       remainderQty,
+						SlotsUsed: remainderQty * (fitSlots / fitQty),
+						Status:    models.BatchQueued,
+					}
+					_ = uc.batchRepo.Create(ctx, remainder)
+
+					// Update current batch to the portion that fits
+					b.Qty = fitQty
+					b.SlotsUsed = fitSlots
+				}
+
 				b.MachineID = m.ID
 				b.Status = models.BatchAllocated
 				now := time.Now()
@@ -174,7 +242,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 					if referenceItemID == "" {
 						referenceItemID = b.ItemID
 					}
-					queued[i] = nil // Mark as assigned in this run
+					queued[i] = nil
 				}
 			}
 		}
@@ -258,15 +326,10 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 				}
 
 				if !alreadyExists {
-					newBatch := &models.ProductionBatch{
-						ID:        uuid.NewString(),
-						POID:      po.ID,
-						SOPStepID: nextStep.ID,
-						NodeID:    po.NodeID,
-						Status:    models.BatchQueued,
-						// ItemID/Qty logic would go here
+					if err := uc.createBatchForStep(ctx, po, nextStep.ID); err != nil {
+						// Log error but continue
+						fmt.Printf("failed to create batch for step %s: %v\n", nextStep.ID, err)
 					}
-					_ = uc.batchRepo.Create(ctx, newBatch)
 				}
 			}
 		}
@@ -275,4 +338,3 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 	// 6. Trigger allocation for the newly queued tasks
 	return uc.RunAllocation(ctx, po.NodeID)
 }
-

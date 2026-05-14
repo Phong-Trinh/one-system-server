@@ -80,7 +80,7 @@ func (r *itemRepository) FindAll(ctx context.Context) ([]*models.Item, error) {
 		return nil, fmt.Errorf("itemRepository.FindAll: %w", err)
 	}
 	defer cur.Close(ctx)
-	
+
 	var items []*models.Item
 	for cur.Next(ctx) {
 		var doc itemDoc

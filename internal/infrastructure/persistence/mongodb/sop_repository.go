@@ -32,6 +32,8 @@ type sopStepDoc struct {
 	SeqNo                int      `bson:"seq_no"`
 	DependsOn            []string `bson:"depends_on"`
 	StationTypeID        string   `bson:"station_type_id,omitempty"`
+	SlotConsumption      float64  `bson:"slot_consumption"`
+	AllowMix             bool     `bson:"allow_mix"`
 	IngredientBOMLineIDs []string `bson:"ingredient_bom_line_ids"`
 	Duration             int      `bson:"duration"`
 	Description          string   `bson:"description"`
@@ -52,6 +54,8 @@ func sopStepToDoc(s *models.SOPStep) *sopStepDoc {
 		SeqNo:                s.SeqNo,
 		DependsOn:            s.DependsOn,
 		StationTypeID:        s.StationTypeID,
+		SlotConsumption:      s.SlotConsumption,
+		AllowMix:             s.AllowMix,
 		IngredientBOMLineIDs: s.IngredientBOMLineIDs,
 		Duration:             s.Duration,
 		Description:          s.Description,
@@ -65,6 +69,8 @@ func docToSOPStep(d *sopStepDoc) *models.SOPStep {
 		SeqNo:                d.SeqNo,
 		DependsOn:            d.DependsOn,
 		StationTypeID:        d.StationTypeID,
+		SlotConsumption:      d.SlotConsumption,
+		AllowMix:             d.AllowMix,
 		IngredientBOMLineIDs: d.IngredientBOMLineIDs,
 		Duration:             d.Duration,
 		Description:          d.Description,
@@ -173,7 +179,6 @@ func (r *sopRepository) FindStepByID(ctx context.Context, id string) (*models.SO
 	}
 	return docToSOPStep(&doc), nil
 }
-
 
 // ListSteps returns steps for a SOP.
 func (r *sopRepository) ListSteps(ctx context.Context, sopID string) ([]*models.SOPStep, error) {

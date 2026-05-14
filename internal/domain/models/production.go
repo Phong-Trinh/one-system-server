@@ -32,14 +32,16 @@ type SOP struct {
 // SOPStep is a single step in a SOP.
 // station_type_id drives the production queue allocation engine.
 type SOPStep struct {
-	ID                     string   `json:"id"`                        // Unique identifier for the step
-	SOPID                  string   `json:"sop_id"`                    // FK → SOP
-	SeqNo                  int      `json:"seq_no"`                    // Sequence number (execution order)
-	DependsOn              []string `json:"depends_on"`                // IDs of steps that must complete before this one
-	StationTypeID          string   `json:"station_type_id,omitempty"` // FK → StationType — optional (manual steps)
-	IngredientBOMLineIDs   []string `json:"ingredient_bom_line_ids"`   // FKs → BOMLine.ID (ingredients added in this step)
-	Duration               int      `json:"duration"`                  // Estimated duration in seconds
-	Description            string   `json:"description"`               // Human-readable instruction
+	ID                   string   `json:"id"`                        // Unique identifier for the step
+	SOPID                string   `json:"sop_id"`                    // FK → SOP
+	SeqNo                int      `json:"seq_no"`                    // Sequence number (execution order)
+	DependsOn            []string `json:"depends_on"`                // IDs of steps that must complete before this one
+	StationTypeID        string   `json:"station_type_id,omitempty"` // FK → StationType — optional (manual steps)
+	SlotConsumption      float64  `json:"slot_consumption"`          // Capacity units per 1 base unit of item in this step
+	AllowMix             bool     `json:"allow_mix"`                 // Whether this step can share a machine with other items/steps
+	IngredientBOMLineIDs []string `json:"ingredient_bom_line_ids"`   // FKs → BOMLine.ID (ingredients added in this step)
+	Duration             int      `json:"duration"`                  // Estimated duration in seconds
+	Description          string   `json:"description"`               // Human-readable instruction
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ const (
 // ProductionOrder is the central execution record generated from a BOM + SOP.
 type ProductionOrder struct {
 	ID             string    `json:"id"`
+	ItemID         string    `json:"item_id"`       // FK → Item (the produced item)
 	BOMID          string    `json:"bom_id"`        // FK → BOM
 	SOPID          string    `json:"sop_id"`        // FK → SOP
 	NodeID         string    `json:"node_id"`       // FK → Node (where production happens)
@@ -101,23 +104,21 @@ const (
 // ProductionBatch is the atomic execution unit that locks one machine (or slot) for one cook cycle.
 // A single ProductionOrder may generate multiple batches (capacity overflow, or mix constraint).
 type ProductionBatch struct {
-	ID                  string      `json:"id"`
-	POID                string      `json:"po_id"`       // FK → ProductionOrder
-	SOPStepID           string      `json:"sop_step_id"` // FK → SOPStep
-	NodeID              string      `json:"node_id"`     // FK → Node
-	MachineID           string      `json:"machine_id"`  // FK → Machine
-	ItemID              string      `json:"item_id"`     // Single item type in this batch
-	Qty                 float64     `json:"qty"`         // Units in this batch (base unit)
-	SlotsUsed           float64     `json:"slots_used"`  // qty × ItemCapacityConfig.slot_consumption
-	Status              BatchStatus `json:"status"`
+	ID        string      `json:"id"`
+	POID      string      `json:"po_id"`       // FK → ProductionOrder
+	SOPStepID string      `json:"sop_step_id"` // FK → SOPStep
+	NodeID    string      `json:"node_id"`     // FK → Node
+	MachineID string      `json:"machine_id"`  // FK → Machine
+	ItemID    string      `json:"item_id"`     // Single item type in this batch
+	Qty       float64     `json:"qty"`         // Units in this batch (base unit)
+	SlotsUsed float64     `json:"slots_used"`  // qty × ItemCapacityConfig.slot_consumption
+	Status    BatchStatus `json:"status"`
 
-	AllocatedAt         *time.Time  `json:"allocated_at"`         // When system reserved the machine slot
-	StartedAt           *time.Time  `json:"started_at"`           // When staff clicked "Confirm Placed"
-	EstimatedCompletion *time.Time  `json:"estimated_completion"` // started_at + SOPStep.duration
-	ActualEnd           *time.Time  `json:"actual_end"`           // When staff clicked "Confirm Completed"
+	AllocatedAt         *time.Time `json:"allocated_at"`         // When system reserved the machine slot
+	StartedAt           *time.Time `json:"started_at"`           // When staff clicked "Confirm Placed"
+	EstimatedCompletion *time.Time `json:"estimated_completion"` // started_at + SOPStep.duration
+	ActualEnd           *time.Time `json:"actual_end"`           // When staff clicked "Confirm Completed"
 }
-
-
 
 // StockConsumption records actual material consumed during a batch.
 // Written at batch completion and feeds into POCostRecord.material_cost.
