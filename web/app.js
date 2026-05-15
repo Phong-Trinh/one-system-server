@@ -22,6 +22,7 @@ async function loadInitialData() {
         loadNodes()
     ]);
     loadProductionOrders(); // Initial load of active orders
+    startPolling();         // Start background fetching of pool and KDS tasks
 }
 
 let globalMachines = [];
@@ -1535,13 +1536,410 @@ window.openWizardModal = openWizardModal;
 window.closeWizardModal = closeWizardModal;
 
 function openWizardModal() {
-    resetWizard();
-    document.getElementById('wizardModal').classList.add('active');
+    if (typeof resetWizard === 'function') resetWizard();
+    const modal = document.getElementById('wizardModal');
+    if (modal) modal.classList.add('active');
 }
 
 function closeWizardModal() {
-    document.getElementById('wizardModal').classList.remove('active');
+    const modal = document.getElementById('wizardModal');
+    if (modal) modal.classList.remove('active');
 }
+
+// ─── KDS State ────────────────────────────────────────────────────────────────
+let kdsTasks = [];      // KDSBatchView[] from GET /kds/batches
+let frontOrders = [];   // ProductionOrder[] from POST /production/orders
+let pooledOrders = [];  // PooledOrderView[] from GET /kds/pool
+let kdsMachines = [
+    { id: 'M1_BEP_NUONG', name: 'Grill #1', capacity: 8 },
+    { id: 'M2_MAY_CHIEN_1', name: 'Fryer #1', capacity: 2 },
+    { id: 'M3_MAY_CHIEN_2', name: 'Fryer #2', capacity: 2 },
+    { id: 'M4_BAN_RAP', name: 'Assembly', capacity: 10 }
+];
+let kdsPollingInterval = null;
+let poolPollingInterval = null;
+
+// ─── Demo Data (BOM IDs must exist in your DB) ────────────────────────────────
+// These match the SOPs defined in hamburger_peak_demo.go
+const DEMO_ORDERS = [
+    { bom_id: 'BOM_HAMBURGER_BO', _label: 'Hamburger Bò', delay: 0 },
+    { bom_id: 'BOM_HAMBURGER_GA', _label: 'Hamburger Gà', delay: 5000 },
+    { bom_id: 'BOM_BIT_TET', _label: 'Bò Bít Tết', delay: 30000 }
+];
+
+// ─── Toast Notifications ─────────────────────────────────────────────────────
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '🔔'}</span> <span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(120%)';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// ─── Peak Demo: Creates real POs via API ─────────────────────────────────────
+async function runPeakDemo() {
+    if (!activeNodeId) {
+        showToast('Vui lòng chọn Node (Chi nhánh) trước!', 'warning');
+        return;
+    }
+    showToast('⚡ Bắt đầu Peak Demo — 3 đơn hàng sẽ đến lần lượt...', 'info');
+    frontOrders = [];
+    updateDualView();
+
+    for (const demo of DEMO_ORDERS) {
+        await new Promise(r => setTimeout(r, demo.delay));
+        try {
+            const res = await fetch(`${API_BASE}/production/orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bom_id: demo.bom_id, node_id: activeNodeId, target_qty: 1 })
+            });
+            if (res.ok) {
+                const po = await res.json();
+                // Attach UI label for display
+                po._label = demo._label;
+                frontOrders.push(po);
+                showToast(`🛒 Đơn mới: ${demo._label} (#${po.id.slice(-6)})`, 'info');
+                updateDualView();
+                // Force an immediate refresh so UI updates instantly
+                refreshPool();
+                refreshKDSQueue();
+            } else {
+                const err = await res.json();
+                showToast(`Lỗi tạo đơn ${demo._label}: ${err.error}`, 'warning');
+            }
+        } catch (e) {
+            showToast(`Không kết nối được backend: ${e.message}`, 'warning');
+        }
+    }
+}
+
+let frontPollingInterval = null;
+
+// ─── Polling ─────────────────────────────────────────────────────────────────
+function startPolling() {
+    if (!kdsPollingInterval) {
+        kdsPollingInterval = setInterval(refreshKDSQueue, 1000);
+    }
+    if (!poolPollingInterval) {
+        poolPollingInterval = setInterval(refreshPool, 1000);
+    }
+    if (!frontPollingInterval) {
+        frontPollingInterval = setInterval(refreshFrontOrders, 1000);
+    }
+    refreshKDSQueue();
+    refreshPool();
+    refreshFrontOrders();
+}
+
+function stopPolling() {
+    clearInterval(kdsPollingInterval); kdsPollingInterval = null;
+    clearInterval(poolPollingInterval); poolPollingInterval = null;
+    clearInterval(frontPollingInterval); frontPollingInterval = null;
+}
+
+async function refreshKDSQueue() {
+    if (!activeNodeId) return;
+    try {
+        const res = await fetch(
+            `${API_BASE}/kds/batches?node_id=${activeNodeId}&status=QUEUED&status=ALLOCATED&status=IN_PROGRESS`
+        );
+        if (res.ok) {
+            kdsTasks = await res.json();
+            renderKDSMachines();
+            renderKDSTaskQueue();
+        }
+    } catch (_) { }
+}
+
+async function refreshFrontOrders() {
+    if (!activeNodeId || frontOrders.length === 0) return;
+    try {
+        const res = await fetch(`${API_BASE}/production/orders?node_id=${activeNodeId}`);
+        if (res.ok) {
+            const allOrders = await res.json();
+            frontOrders.forEach(fo => {
+                const updated = allOrders.find(o => o.id === fo.id);
+                if (updated) {
+                    fo.status = updated.status;
+                }
+            });
+            renderFrontOrders();
+        }
+    } catch (_) { }
+}
+
+async function refreshPool() {
+    if (!activeNodeId) return;
+    try {
+        const res = await fetch(`${API_BASE}/kds/pool`);
+        if (res.ok) {
+            const data = await res.json();
+            pooledOrders = data[activeNodeId] || [];
+            renderPlanningQueue();
+        }
+    } catch (_) { }
+}
+
+// ─── Dual View Render ────────────────────────────────────────────────────────
+function updateDualView() {
+    renderFrontOrders();
+    renderPlanningQueue();
+    renderKDSMachines();
+    renderKDSTaskQueue();
+}
+
+function renderFrontOrders() {
+    const list = document.getElementById('frontOrderList');
+    if (!list) return;
+
+    if (frontOrders.length === 0) {
+        list.innerHTML = '<div class="empty-state">Đang đợi khách...</div>';
+        return;
+    }
+
+    list.innerHTML = frontOrders.map(order => {
+        let progress = 0;
+        let statusText = 'POOLED';
+        let statusClass = '';
+
+        if (order.status === 'COMPLETED') {
+            progress = 100;
+            statusText = 'READY';
+            statusClass = 'status-allocated';
+        } else if (order.status === 'IN_PROGRESS') {
+            progress = 50;
+            statusText = 'COOKING';
+            statusClass = 'status-cooking';
+        }
+
+        const itemName = order._label || (globalItems && globalItems.find(i => i.id === order.item_id)?.name) || order.item_id || 'Unknown Item';
+        const qty = order.target_qty || 1;
+
+        return `
+            <div class="front-order-card">
+                <div class="front-order-header">
+                    <span class="order-num">#${order.id.slice(-6)}</span>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+                <div style="font-size:0.9rem;font-weight:600;color:#fff;margin:8px 0;display:flex;justify-content:space-between;align-items:center;">
+                    <span>${itemName}</span>
+                    <span style="background:var(--bg-dark);padding:2px 6px;border-radius:4px;color:var(--gold);font-size:0.8rem;">x${qty}</span>
+                </div>
+                <div class="progress-bar-bg" style="height:4px;background:rgba(255,255,255,0.05);">
+                    <div class="progress-bar-fill" style="width:${progress}%;background:${progress === 100 ? 'var(--success)' : 'var(--primary)'}"></div>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderPlanningQueue() {
+    const list = document.getElementById('planningQueue');
+    const badge = document.getElementById('poolCountBadge');
+    if (!list) return;
+
+    // Update pool count badge in pane header
+    if (badge) {
+        badge.textContent = pooledOrders.length > 0
+            ? `🕐 Pool: ${pooledOrders.length} đơn đang gom`
+            : '✅ Pool trống';
+    }
+
+    if (pooledOrders.length === 0) {
+        list.innerHTML = '<div class="empty-state">Tất cả đã điều phối xuống bếp ✅</div>';
+        return;
+    }
+
+    list.innerHTML = pooledOrders.map(entry => {
+        const waited = entry.waited_seconds || 0;
+        const minWin = entry.min_window_seconds || 8;
+        const maxWait = entry.max_wait_seconds || 30;
+
+        let urgencyColor, urgencyLabel, barWidth;
+
+        if (waited < minWin) {
+            // Phase 1: Batching window
+            const secsLeft = minWin - waited;
+            urgencyColor = 'var(--primary)';
+            urgencyLabel = `⏳ Chờ gom chung (${secsLeft}s)`;
+            barWidth = Math.round((waited / minWin) * 100);
+        } else {
+            // Phase 2: Waiting for a free machine, or force flush if taking too long
+            const secsLeft = maxWait - waited;
+            if (secsLeft <= 5) {
+                urgencyColor = 'var(--accent)'; // Red
+                urgencyLabel = `🔴 Ép đẩy Bếp! (${secsLeft}s)`;
+                barWidth = 100;
+            } else {
+                urgencyColor = 'var(--gold)';
+                urgencyLabel = `⚠️ Đợi Bếp rảnh (${secsLeft}s)`;
+                barWidth = Math.round(((waited - minWin) / (maxWait - minWin)) * 100);
+            }
+        }
+
+        const shortId = entry.po_id.slice(-6).toUpperCase();
+        // Match front-order label by po_id if available
+        const matched = frontOrders.find(o => o.id === entry.po_id);
+        const itemLabel = matched ? (matched._label || matched.item_id || '') : '';
+
+        return `
+            <div class="pool-card">
+                <div class="pool-card-header">
+                    <div>
+                        <span class="pool-order-id">#${shortId}</span>
+                        ${itemLabel ? `<span class="pool-item-label">${itemLabel}</span>` : ''}
+                    </div>
+                    <span class="pool-urgency-badge" style="color:${urgencyColor};">${urgencyLabel}</span>
+                </div>
+                <div class="pool-countdown-bar-bg">
+                    <div class="pool-countdown-bar-fill" style="width:${barWidth}%;background:${urgencyColor};"></div>
+                </div>
+                <div class="pool-meta">
+                    <span style="font-size:0.65rem;color:var(--text-muted);">
+                        Vào lúc ${new Date(entry.enqueued_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    <span style="font-size:0.65rem;color:var(--text-muted);">AI tự phân rã</span>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+
+function renderKDSMachines() {
+    const strip = document.getElementById('kdsMachineStrip');
+    const usageLabel = document.getElementById('machineUsage');
+    if (!strip) return;
+
+    strip.innerHTML = kdsMachines.map(m => {
+        const active = kdsTasks.filter(t => t.machine_id === m.id && t.status !== 'COMPLETED').length;
+        return `
+            <div class="machine-mini-card ${active > 0 ? 'busy' : ''}">
+                <div style="font-size:0.8rem;font-weight:800;">${m.name}</div>
+                <div style="font-size:0.6rem;color:var(--text-muted);">${active}/${m.capacity} Slots</div>
+            </div>`;
+    }).join('');
+
+    const busyCount = kdsMachines.filter(m => kdsTasks.some(t => t.machine_id === m.id && t.status === 'IN_PROGRESS')).length;
+    if (usageLabel) usageLabel.textContent = `${busyCount}/3 Bận`;
+}
+
+function renderKDSTaskQueue() {
+    const grid = document.getElementById('kdsTaskQueue');
+    if (!grid) return;
+
+    const active = kdsTasks.filter(t => t.status !== 'COMPLETED');
+    if (active.length === 0) {
+        grid.innerHTML = '<div class="empty-state">Bếp đang trống...</div>';
+        return;
+    }
+
+    // Group tasks that have the same machine, step, and status
+    const grouped = [];
+    active.forEach(t => {
+        const key = `${t.machine_id}_${t.step_name}_${t.status}`;
+        let group = grouped.find(g => g.key === key);
+        if (group) {
+            group.po_ids.push(t.po_id.slice(-6).toUpperCase());
+            group.batch_ids.push(t.id);
+            // Sync elapsed/duration to the max across grouped items to avoid jitter
+            group.elapsed = Math.max(group.elapsed, t.elapsed);
+            group.duration = Math.max(group.duration, t.duration);
+        } else {
+            grouped.push({
+                key,
+                machine_id: t.machine_id,
+                step_name: t.step_name,
+                status: t.status,
+                elapsed: t.elapsed,
+                duration: t.duration,
+                po_ids: [t.po_id.slice(-6).toUpperCase()],
+                batch_ids: [t.id]
+            });
+        }
+    });
+
+    grid.innerHTML = grouped.map(group => {
+        const progress = group.duration > 0 ? Math.min(100, (group.elapsed / group.duration) * 100) : 0;
+        const timeLeft = Math.max(0, group.duration - group.elapsed);
+        const isCooking = group.status === 'IN_PROGRESS';
+        const isReady = isCooking && timeLeft === 0;
+        const isAllocated = group.status === 'ALLOCATED';
+
+        const bell = isAllocated ? '<span class="notif-bell bell-blue">🔔</span>'
+            : isReady ? '<span class="notif-bell bell-red shake">🔔</span>'
+                : '';
+
+        const statusLabel = { QUEUED: 'QUEUED', ALLOCATED: 'ALLOCATED', IN_PROGRESS: 'COOKING' }[group.status] || group.status;
+        const poDisplay = group.po_ids.map(id => `#${id}`).join(', ');
+        const batchIdsStr = group.batch_ids.join(',');
+
+        return `
+            <div class="task-card priority-medium ${isReady ? 'ready-to-finish' : ''}">
+                <div class="task-header">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:0.8rem;font-weight:700;">
+                        ${bell}
+                        <span class="task-id">${poDisplay}</span>
+                    </div>
+                    <span class="status-badge status-${group.status.toLowerCase()}">${statusLabel}</span>
+                </div>
+                <div class="task-body">
+                    <h3 style="margin:0">${group.step_name}</h3>
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">
+                        ${group.machine_id || 'Chờ máy...'}
+                    </div>
+                    ${isCooking ? `
+                        <div class="cooking-progress" style="margin-top:10px;">
+                            <div class="cooking-bar">
+                                <div class="cooking-fill" style="width:${progress}%"></div>
+                                <span class="cooking-time-left">${timeLeft}s</span>
+                            </div>
+                        </div>` : ''}
+                </div>
+                <div class="task-footer">
+                    ${isAllocated ? `<button class="btn-start" onclick="startCooking('${batchIdsStr}')">▶ START</button>` : ''}
+                    ${isCooking ? `<button class="btn-done${isReady ? ' ready' : ''}" onclick="finishTask('${batchIdsStr}')">
+                                        ${isReady ? '✅ DONE' : '⏱ Nấu...'}
+                                    </button>` : ''}
+                    ${group.status === 'QUEUED' ? `<button class="btn-secondary" disabled>⏳ WAIT</button>` : ''}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+// ─── KDS Actions ─────────────────────────────────────────────────────────────
+async function startCooking(batchIdsStr) {
+    const ids = batchIdsStr.split(',');
+    try {
+        await Promise.all(ids.map(id => fetch(`${API_BASE}/kds/batches/${id}/confirm-placement`, { method: 'POST' })));
+        await refreshKDSQueue();
+        showToast('🍳 Bắt đầu làm!', 'success');
+    } catch (e) {
+        showToast('Lỗi kết nối backend', 'warning');
+    }
+}
+
+async function finishTask(batchIdsStr) {
+    const ids = batchIdsStr.split(',');
+    try {
+        await Promise.all(ids.map(id => fetch(`${API_BASE}/kds/batches/${id}/confirm-completion`, { method: 'POST' })));
+        await refreshKDSQueue();
+        await refreshPool();
+        showToast('✅ Hoàn thành công đoạn!', 'success');
+    } catch (e) {
+        showToast('Lỗi kết nối backend', 'warning');
+    }
+}
+
+window.runPeakDemo = runPeakDemo;
+window.startCooking = startCooking;
+window.finishTask = finishTask;
+window.openPOModal = () => alert('Manual PO integration coming soon!');
 
 // Final Initializations
 loadInitialData();

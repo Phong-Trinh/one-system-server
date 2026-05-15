@@ -32,6 +32,7 @@ type poDoc struct {
 	PlannedInput   float64         `bson:"planned_input"`
 	ActualOutput   float64         `bson:"actual_output"`
 	Status         models.POStatus `bson:"status"`
+	DeadlineAt     *time.Time      `bson:"deadline_at,omitempty"`
 	ScheduledStart time.Time       `bson:"scheduled_start"`
 	ScheduledEnd   time.Time       `bson:"scheduled_end"`
 	CreatedAt      time.Time       `bson:"created_at"`
@@ -61,6 +62,7 @@ func poToDoc(po *models.ProductionOrder) *poDoc {
 		PlannedInput:   po.PlannedInput,
 		ActualOutput:   po.ActualOutput,
 		Status:         po.Status,
+		DeadlineAt:     po.DeadlineAt,
 		ScheduledStart: po.ScheduledStart,
 		ScheduledEnd:   po.ScheduledEnd,
 		CreatedAt:      po.CreatedAt,
@@ -79,6 +81,7 @@ func docToPO(d *poDoc) *models.ProductionOrder {
 		PlannedInput:   d.PlannedInput,
 		ActualOutput:   d.ActualOutput,
 		Status:         d.Status,
+		DeadlineAt:     d.DeadlineAt,
 		ScheduledStart: d.ScheduledStart,
 		ScheduledEnd:   d.ScheduledEnd,
 		CreatedAt:      d.CreatedAt,

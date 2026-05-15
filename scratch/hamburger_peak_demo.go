@@ -178,9 +178,9 @@ func main() {
 	fmt.Println("=== KHỞI TẠO HỆ THỐNG ===")
 
 	machines := []*models.Machine{
-		{ID: "M1_BEP_NUONG", NodeID: nodeID, StationTypeID: "BEP_NUONG", AllocationStrategy: models.StrategyAsync, MaxCapacity: 8, OperationalThreshold: 8},
-		{ID: "M2_MAY_CHIEN_1", NodeID: nodeID, StationTypeID: "MAY_CHIEN", AllocationStrategy: models.StrategySync, MaxCapacity: 4, OperationalThreshold: 4},
-		{ID: "M3_MAY_CHIEN_2", NodeID: nodeID, StationTypeID: "MAY_CHIEN", AllocationStrategy: models.StrategySync, MaxCapacity: 2, OperationalThreshold: 2},
+		{ID: "M1_BEP_NUONG", NodeID: nodeID, StationTypeID: "BEP_NUONG", AllocationStrategy: models.StrategyAsync, MaxCapacity: 8},
+		{ID: "M2_MAY_CHIEN_1", NodeID: nodeID, StationTypeID: "MAY_CHIEN", AllocationStrategy: models.StrategySync, MaxCapacity: 2},
+		{ID: "M3_MAY_CHIEN_2", NodeID: nodeID, StationTypeID: "MAY_CHIEN", AllocationStrategy: models.StrategySync, MaxCapacity: 2},
 	}
 	for _, m := range machines {
 		machineRepo.machines[m.ID] = m

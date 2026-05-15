@@ -58,7 +58,8 @@
                                 <p>Danh mục nguyên liệu, bán thành phẩm và thành phẩm của toàn hệ thống.</p>
                             </div>
                             <div class="header-actions">
-                                <button class="btn-primary" onclick="openQuickAddRawMaterial()">+ Nguyên liệu thô</button>
+                                <button class="btn-primary" onclick="openQuickAddRawMaterial()">+ Nguyên liệu
+                                    thô</button>
                                 <button class="btn-accent" onclick="openWizardModal()">✨ Tạo Món Mới (Wizard)</button>
                             </div>
                         </div>
@@ -69,7 +70,8 @@
                             <div class="item-type-filters">
                                 <button class="filter-btn active" onclick="filterItemType('ALL')">Tất cả</button>
                                 <button class="filter-btn" onclick="filterItemType('RAW_MATERIAL')">Thô</button>
-                                <button class="filter-btn" onclick="filterItemType('SEMI_PRODUCT')">Bán thành phẩm</button>
+                                <button class="filter-btn" onclick="filterItemType('SEMI_PRODUCT')">Bán thành
+                                    phẩm</button>
                                 <button class="filter-btn" onclick="filterItemType('PRODUCT')">Thành phẩm</button>
                             </div>
                             <div class="search-box">
@@ -83,50 +85,86 @@
                     </div>
                 </section>
 
-                <!-- 2. Production Order Section -->
+                <!-- 2. Production Order Section (Dual View: Front Store & Kitchen) -->
                 <section id="production-section" class="section-card">
-                    <div class="section-header">
-                        <h2>🚀 Khởi tạo Sản xuất</h2>
-                        <p>Chọn món ăn và bếp để bắt đầu quy trình chế biến tự động.</p>
+                    <div class="section-header"
+                        style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <h2>🏪 Hệ Thống Vận Hành SnapBite</h2>
+                            <p>Giao diện hợp nhất: Thu ngân (Front) & Bếp trưởng (KDS).</p>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn-primary" onclick="runPeakDemo()"
+                                style="background: var(--gold); color: #000; font-size: 0.9rem; padding: 0.6rem 1.2rem;">⚡
+                                Chạy Demo Peak (3 Orders)</button>
+                        </div>
                     </div>
 
-                    <div class="split-view">
-                        <div class="wizard-column">
-                            <form id="poForm" class="glass-form">
-                                <div class="form-group">
-                                    <label for="poItemSelect">Chọn Món ăn cần sản xuất</label>
-                                    <select id="poItemSelect" class="select-input" required>
-                                        <option value="" disabled selected>Đang tải danh sách món...</option>
-                                    </select>
-                                    <small id="poBomInfo" style="color: #10b981; font-size: 0.75rem; display: none;">✅
-                                        Đã tìm thấy công thức (BOM)</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="poTargetQty">Số lượng cần sản xuất (Output)</label>
-                                    <div class="row-inline">
-                                        <input type="number" id="poTargetQty" min="1" step="0.5" placeholder="Vd: 50"
-                                            required style="flex: 1;">
-                                        <span id="poUnitLabel" style="color: #9ca3af; padding: 0.5rem;">đơn vị</span>
-                                    </div>
-                                </div>
-
-                                <button type="submit" class="btn-accent"
-                                    style="width: 100%; padding: 1rem; font-size: 1.1rem;">🔥 BẮT ĐẦU CHẾ BIẾN</button>
-                            </form>
-                            <div id="poResult" class="result-box"></div>
-                        </div>
-
-                        <div class="wizard-column">
-                            <div class="list-header">
-                                <h3>⚡ Lệnh sản xuất đang thực thi</h3>
+                    <div class="triple-view-container">
+                        <!-- 1. Front Store Pane -->
+                        <div class="view-pane front-store">
+                            <div class="pane-header">
+                                <h3>🛒 Tiếp Nhận Đơn</h3>
+                                <span class="view-badge">Front Store</span>
                             </div>
-                            <div id="activePOList" class="dynamic-list" style="max-height: 400px; overflow-y: auto;">
-                                <div class="empty-state" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                    Chưa có lệnh sản xuất nào đang chạy.
+                            <div class="pane-body">
+                                <div id="frontOrderList" class="order-list">
+                                    <div class="empty-state">Đang đợi khách...</div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 2. Orchestrator Pane (AI Pool Queue) -->
+                        <div class="view-pane orchestrator">
+                            <div class="pane-header">
+                                <div>
+                                    <h3>⚙️ Điều Phối (AI)</h3>
+                                    <span style="font-size:0.7rem;color:var(--text-muted);">Tự động phân rã sau khi gom đủ đơn</span>
+                                </div>
+                                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                                    <span class="view-badge" style="background: var(--gold); color: #000;">AI Engine</span>
+                                    <span id="poolCountBadge" style="font-size:0.65rem;color:var(--text-muted);">🕐 Pool: 0 đơn</span>
+                                </div>
+                            </div>
+                            <div class="pane-body">
+                                <div id="planningQueue" class="planning-queue">
+                                    <div class="empty-state">Chờ đơn hàng đến...</div>
+                                </div>
+                                <!-- Hidden: kept for JS compatibility, never shown -->
+                                <div id="allocationAction" style="display: none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Kitchen KDS Pane -->
+                        <div class="view-pane kitchen-workspace">
+                            <div class="pane-header">
+                                <h3>👨‍🍳 Chế Biến (KDS)</h3>
+                                <div class="badge-row">
+                                    <span class="view-badge" style="background: var(--accent);">Chef View</span>
+                                    <span class="machine-status-pill" id="machineUsage">0/3 Bận</span>
+                                </div>
+                            </div>
+                            <div class="pane-body kds-content">
+                                <div id="kdsMachineStrip" class="kds-machine-strip"></div>
+                                <div id="kdsTaskQueue" class="kds-task-grid">
+                                    <div class="empty-state">Bếp đang trống...</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- 4. Historical Orders / Database View -->
+                    <div class="production-history-section" style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 2rem;">
+                        <div class="section-header" style="margin-bottom: 1.5rem;">
+                            <h3>📋 Danh sách Lệnh Sản Xuất (Real-time DB)</h3>
+                            <p style="font-size: 0.8rem; color: var(--text-muted);">Các đơn hàng được tạo trực tiếp từ database hoặc API.</p>
+                        </div>
+                        <div id="activePOList" class="po-grid-view" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                            <div class="empty-state">Đang tải dữ liệu từ server...</div>
+                        </div>
+                    </div>
+                    <!-- Global Toast Container -->
+                    <div id="toastContainer" class="toast-container"></div>
                 </section>
 
                 <!-- 3. Machine Management Section -->
@@ -255,7 +293,8 @@
                 </div>
                 <button class="btn-icon" onclick="closeItemDetail()">×</button>
             </div>
-            <div class="detail-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem;">
+            <div class="detail-grid"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem;">
                 <div class="detail-bom">
                     <h3>📋 Định mức (BOM)</h3>
                     <ul id="detailBomList" class="clean-list" style="margin-top: 1rem;"></ul>
@@ -265,7 +304,8 @@
                     <div id="detailMermaid" class="mermaid-canvas" style="min-height: 200px; margin-top: 1rem;"></div>
                 </div>
             </div>
-            <div class="modal-actions" style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
+            <div class="modal-actions"
+                style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
                 <button class="btn-secondary" onclick="closeItemDetail()">Đóng</button>
                 <button id="detailEditBtn" class="btn-primary">⚙️ Chỉnh sửa BOM/SOP</button>
             </div>
@@ -274,9 +314,12 @@
 
     <!-- 3. Wizard Modal -->
     <div id="wizardModal" class="modal">
-        <div class="modal-content glass-form animate-in" style="max-width: 1000px; width: 95%; padding: 0; overflow: hidden;">
-            <section id="wizard-section" class="section-card active" style="margin: 0; border: none; background: transparent;">
-                <div class="section-header" style="padding: 1.5rem 1.5rem 0 1.5rem; display: flex; justify-content: space-between; align-items: start;">
+        <div class="modal-content glass-form animate-in"
+            style="max-width: 1000px; width: 95%; padding: 0; overflow: hidden;">
+            <section id="wizard-section" class="section-card active"
+                style="margin: 0; border: none; background: transparent;">
+                <div class="section-header"
+                    style="padding: 1.5rem 1.5rem 0 1.5rem; display: flex; justify-content: space-between; align-items: start;">
                     <div>
                         <h2>✨ Tạo Món Mới (Workflow)</h2>
                         <p>Thiết lập Nguyên liệu (BOM) và Quy trình (SOP) từng bước.</p>
@@ -316,31 +359,38 @@
                             <input type="text" id="wizItemBaseUnit" placeholder="Vd: cái, phần" required>
                         </div>
                         <div class="modal-actions">
-                            <button type="button" class="btn-primary" onclick="nextWizardStep(2)">Tiếp tục: Tạo BOM &rarr;</button>
+                            <button type="button" class="btn-primary" onclick="nextWizardStep(2)">Tiếp tục: Tạo BOM
+                                &rarr;</button>
                         </div>
                     </div>
 
                     <div id="wizard-step-2" class="wizard-step" style="display: none;">
                         <h3>Bước 2: Định nghĩa Nguyên liệu (BOM)</h3>
-                        <div id="bomWarning" class="warning-text" style="color: #fbbf24; font-size: 0.9rem; margin-bottom: 1rem;">
+                        <div id="bomWarning" class="warning-text"
+                            style="color: #fbbf24; font-size: 0.9rem; margin-bottom: 1rem;">
                             Lưu ý: Vì đây là Thành phẩm, bạn chỉ có thể chọn Bán thành phẩm hoặc Nguyên liệu thô!
                         </div>
                         <div class="ingredients-container">
-                            <h3>Thành phần <button type="button" id="wizAddIngredientBtn" class="btn-icon">+</button></h3>
+                            <h3>Thành phần <button type="button" id="wizAddIngredientBtn" class="btn-icon">+</button>
+                            </h3>
                             <div id="wizIngredientsList" class="dynamic-list"></div>
                         </div>
                         <div class="modal-actions">
-                            <button type="button" class="btn-secondary" onclick="prevWizardStep(1)">&larr; Quay lại</button>
-                            <button type="button" class="btn-primary" onclick="nextWizardStep(3)">Tiếp tục: Tạo SOP &rarr;</button>
+                            <button type="button" class="btn-secondary" onclick="prevWizardStep(1)">&larr; Quay
+                                lại</button>
+                            <button type="button" class="btn-primary" onclick="nextWizardStep(3)">Tiếp tục: Tạo SOP
+                                &rarr;</button>
                         </div>
                     </div>
 
                     <div id="wizard-step-3" class="wizard-step" style="display: none;">
                         <h3>Bước 3: Quy trình chế biến (SOP)</h3>
-                        <p style="color: #9ca3af; margin-bottom: 1rem;">Định nghĩa các bước thực hiện. Các bước không phụ thuộc nhau sẽ được tự động đưa vào hàng đợi song song.</p>
+                        <p style="color: #9ca3af; margin-bottom: 1rem;">Định nghĩa các bước thực hiện. Các bước không
+                            phụ thuộc nhau sẽ được tự động đưa vào hàng đợi song song.</p>
                         <div class="sop-split-view">
                             <div class="steps-container">
-                                <h3>Các bước thực hiện <button type="button" id="wizAddStepBtn" class="btn-icon">+</button></h3>
+                                <h3>Các bước thực hiện <button type="button" id="wizAddStepBtn"
+                                        class="btn-icon">+</button></h3>
                                 <div id="wizStepsList" class="dynamic-list"></div>
                             </div>
                             <div class="sop-preview-container">
@@ -351,17 +401,23 @@
                             </div>
                         </div>
                         <div class="modal-actions">
-                            <button type="button" class="btn-secondary" onclick="prevWizardStep(2)">&larr; Quay lại</button>
-                            <button type="button" class="btn-primary" onclick="nextWizardStep(4)">Tiếp tục: Xác nhận &rarr;</button>
+                            <button type="button" class="btn-secondary" onclick="prevWizardStep(2)">&larr; Quay
+                                lại</button>
+                            <button type="button" class="btn-primary" onclick="nextWizardStep(4)">Tiếp tục: Xác nhận
+                                &rarr;</button>
                         </div>
                     </div>
 
                     <div id="wizard-step-4" class="wizard-step" style="display: none;">
                         <h3>Bước 4: Xác nhận & Hoàn tất</h3>
-                        <div class="confirm-summary" id="wizardSummary" style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: #e5e7eb;"></div>
+                        <div class="confirm-summary" id="wizardSummary"
+                            style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: #e5e7eb;">
+                        </div>
                         <div class="modal-actions">
-                            <button type="button" class="btn-secondary" onclick="prevWizardStep(3)">&larr; Quay lại</button>
-                            <button type="button" id="wizard-btn-finish" class="btn-accent" onclick="submitWizard()">✨ Hoàn tất & Lưu dữ liệu</button>
+                            <button type="button" class="btn-secondary" onclick="prevWizardStep(3)">&larr; Quay
+                                lại</button>
+                            <button type="button" id="wizard-btn-finish" class="btn-accent" onclick="submitWizard()">✨
+                                Hoàn tất & Lưu dữ liệu</button>
                         </div>
                         <div id="wizardResult" class="result-box"></div>
                     </div>
@@ -418,7 +474,8 @@
                 </div>
                 <div class="form-group">
                     <label>Đơn vị đo công suất (Unit)</label>
-                    <input type="text" id="quickStationUnit" class="select-input" placeholder="Vd: khay, lít..." required>
+                    <input type="text" id="quickStationUnit" class="select-input" placeholder="Vd: khay, lít..."
+                        required>
                 </div>
                 <div class="modal-actions">
                     <button type="button" id="cancelQuickStation" class="btn-secondary">Hủy</button>
@@ -435,7 +492,8 @@
                 <option value="" disabled selected>Chọn nguyên liệu...</option>
             </select>
             <button type="button" class="btn-quick-add" title="Tạo nhanh nguyên liệu mới">+</button>
-            <input type="number" class="wiz-qty-input" min="0.01" step="0.01" placeholder="SL" required style="width: 80px;">
+            <input type="number" class="wiz-qty-input" min="0.01" step="0.01" placeholder="SL" required
+                style="width: 80px;">
             <button type="button" class="btn-remove">×</button>
         </div>
     </template>
@@ -444,7 +502,8 @@
         <div class="list-row sop-step-row animate-in" data-step-id="">
             <div class="step-header">
                 <span class="step-badge">Cấu hình Bước <span class="step-number">1</span></span>
-                <div class="wiz-strategy-badge" style="display: none; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; background: rgba(99, 102, 241, 0.2); border: 1px solid var(--primary); align-items: center; gap: 4px;">
+                <div class="wiz-strategy-badge"
+                    style="display: none; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; background: rgba(99, 102, 241, 0.2); border: 1px solid var(--primary); align-items: center; gap: 4px;">
                     <span class="strategy-icon">⏲️</span> <span class="strategy-name">Async</span>
                 </div>
                 <button type="button" class="btn-remove" title="Xóa bước này">×</button>
@@ -453,10 +512,13 @@
                 <div class="form-group">
                     <label>Tên Công đoạn & Thời gian</label>
                     <div class="row-inline">
-                        <input type="text" class="wiz-desc-input" placeholder="Vd: Nướng thịt bò" required style="flex: 2;">
+                        <input type="text" class="wiz-desc-input" placeholder="Vd: Nướng thịt bò" required
+                            style="flex: 2;">
                         <div style="position: relative; flex: 1;">
-                            <input type="number" class="wiz-duration-input" placeholder="Giây" required style="width: 100%;">
-                            <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: var(--text-muted);">s</span>
+                            <input type="number" class="wiz-duration-input" placeholder="Giây" required
+                                style="width: 100%;">
+                            <span
+                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: var(--text-muted);">s</span>
                         </div>
                     </div>
                 </div>
@@ -471,7 +533,8 @@
                     <div class="step-config-grid">
                         <div class="config-item">
                             <label>Tiêu thụ (<span class="wiz-unit-label">Slots</span>/Phần)</label>
-                            <input type="number" class="wiz-slots-input" value="1" min="0.1" step="0.1" style="width: 100%;">
+                            <input type="number" class="wiz-slots-input" value="1" min="0.1" step="0.1"
+                                style="width: 100%;">
                         </div>
                         <div class="config-item">
                             <label>Hòa hợp (Allow Mix)</label>

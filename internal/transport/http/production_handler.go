@@ -10,11 +10,12 @@ import (
 )
 
 type productionHandler struct {
-	uc usecase.ProductionUseCase
+	uc           usecase.ProductionUseCase
+	orchestrator *usecase.OrderPoolingOrchestrator // Auto-enqueues new POs into the pool
 }
 
-func newProductionHandler(uc usecase.ProductionUseCase) *productionHandler {
-	return &productionHandler{uc: uc}
+func newProductionHandler(uc usecase.ProductionUseCase, orchestrator *usecase.OrderPoolingOrchestrator) *productionHandler {
+	return &productionHandler{uc: uc, orchestrator: orchestrator}
 }
 
 // POST /api/v1/production/orders
@@ -34,6 +35,13 @@ func (h *productionHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Auto-enqueue into the pool — the orchestrator will decompose at the right time.
+	// No manual "Decompose" action needed from the UI.
+	if h.orchestrator != nil {
+		h.orchestrator.Enqueue(po)
+	}
+
 	c.JSON(http.StatusCreated, po)
 }
 

@@ -57,20 +57,21 @@ const (
 
 // ProductionOrder is the central execution record generated from a BOM + SOP.
 type ProductionOrder struct {
-	ID             string    `json:"id"`
-	ItemID         string    `json:"item_id"`       // FK → Item (the produced item)
-	BOMID          string    `json:"bom_id"`        // FK → BOM
-	SOPID          string    `json:"sop_id"`        // FK → SOP
-	NodeID         string    `json:"node_id"`       // FK → Node (where production happens)
-	TargetQty      float64   `json:"target_qty"`    // Units to produce
-	YieldRate      float64   `json:"yield_rate"`    // Expected yield (e.g., 0.95 = 95%)
-	PlannedInput   float64   `json:"planned_input"` // target_qty / yield_rate
-	ActualOutput   float64   `json:"actual_output"` // Recorded at completion
-	Status         POStatus  `json:"status"`
-	ScheduledStart time.Time `json:"scheduled_start"`
-	ScheduledEnd   time.Time `json:"scheduled_end"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string     `json:"id"`
+	ItemID         string     `json:"item_id"`       // FK → Item (the produced item)
+	BOMID          string     `json:"bom_id"`        // FK → BOM
+	SOPID          string     `json:"sop_id"`        // FK → SOP
+	NodeID         string     `json:"node_id"`       // FK → Node (where production happens)
+	TargetQty      float64    `json:"target_qty"`    // Units to produce
+	YieldRate      float64    `json:"yield_rate"`    // Expected yield (e.g., 0.95 = 95%)
+	PlannedInput   float64    `json:"planned_input"` // target_qty / yield_rate
+	ActualOutput   float64    `json:"actual_output"` // Recorded at completion
+	Status         POStatus   `json:"status"`
+	DeadlineAt     *time.Time `json:"deadline_at,omitempty"` // Customer-facing SLA deadline for entering KDS. If nil, uses CreatedAt + node config MaxPoolWaitSeconds.
+	ScheduledStart time.Time  `json:"scheduled_start"`
+	ScheduledEnd   time.Time  `json:"scheduled_end"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // BOMSnapshot locks the BOM version at the moment of Production Order creation.

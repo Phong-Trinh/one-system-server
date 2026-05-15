@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/gin-gonic/gin"
 
+	"one-system-server/internal/domain/services"
 	"one-system-server/internal/usecase"
 )
 
@@ -21,6 +22,9 @@ func NewRouter(
 	productionUC usecase.ProductionUseCase,
 	itemUC usecase.ItemUseCase,
 	allocationUC usecase.AllocationUseCase,
+	batchRepo services.ProductionBatchRepository,
+	sopRepo services.SOPRepository,
+	orchestrator *usecase.OrderPoolingOrchestrator,
 ) *Router {
 	engine := gin.New()
 	engine.Use(gin.Logger(), gin.Recovery())
@@ -112,16 +116,18 @@ func NewRouter(
 			staff.DELETE("/:id", staffH.Delete)
 		}
 
-		// KDS (Kitchen Display System) - Command & Confirm Flow
-		kdsH := newKDSHandler(allocationUC)
+		// KDS (Kitchen Display System) — Command & Confirm Flow
+		kdsH := newKDSHandler(allocationUC, batchRepo, sopRepo, orchestrator)
 		kds := v1.Group("/kds")
 		{
 			kds.POST("/batches/:id/confirm-placement", kdsH.ConfirmPlacement)
 			kds.POST("/batches/:id/confirm-completion", kdsH.ConfirmCompletion)
+			kds.GET("/batches", kdsH.ListBatches)   // ?node_id=&status=
+			kds.GET("/pool", kdsH.GetPoolStatus)    // Pool countdown for UI
 		}
 
 		// Production (BOM, SOP, Orders)
-		prodH := newProductionHandler(productionUC)
+		prodH := newProductionHandler(productionUC, orchestrator)
 		prod := v1.Group("/production")
 		{
 			prod.POST("/boms", prodH.CreateBOM)

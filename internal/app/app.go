@@ -72,14 +72,24 @@ func New(ctx context.Context) (*App, error) {
 	itemUC := usecase.NewItemUseCase(itemRepo)
 	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
 
+	// ── Orchestrator (Auto-Decomposition Engine) ─────────────────────────────
+	orchestratorCfg := usecase.DefaultOrchestratorConfig()
+	orchestrator := usecase.NewOrderPoolingOrchestrator(allocationUC, poRepo, orchestratorCfg)
+	orchestrator.Start(ctx) // Starts background flush goroutine
+
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
-	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC)
+	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC, batchRepo, sopRepo, orchestrator)
 
 	a := &App{router: router, mongoClient: mongoClient}
 
 	// ── Seed Mock Data ────────────────────────────────────────────────────────
 	if err := a.seedData(ctx, orgRepo, nodeRepo); err != nil {
 		log.Error().Err(err).Msg("failed to seed initial data")
+	}
+
+	// ── Seed Kitchen Demo Data (Station types, Machines, Items, BOMs, SOPs) ──
+	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo); err != nil {
+		log.Error().Err(err).Msg("failed to seed kitchen demo data")
 	}
 
 	return a, nil

@@ -327,6 +327,20 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		}
 	}
 
+	// 5. Check if ALL steps in the SOP are completed
+	allSOPCompleted := true
+	for _, step := range allSteps {
+		if !isStepCompleted(step.ID) {
+			allSOPCompleted = false
+			break
+		}
+	}
+	if allSOPCompleted {
+		if err := uc.poRepo.UpdateStatus(ctx, po.ID, models.POCompleted, nil); err != nil {
+			fmt.Printf("failed to mark PO %s completed: %v\n", po.ID, err)
+		}
+	}
+
 	// 6. Trigger allocation for the newly queued tasks
 	return uc.RunAllocation(ctx, po.NodeID)
 }
