@@ -130,6 +130,7 @@ func (h *productionHandler) CreateSOP(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, sop)
 }
+
 // GET /api/v1/production/boms/by-item/:id
 func (h *productionHandler) GetFullBOMByItem(c *gin.Context) {
 	bom, lines, err := h.uc.GetFullBOMByItem(c.Request.Context(), c.Param("id"))

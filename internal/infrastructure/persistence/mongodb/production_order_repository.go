@@ -24,6 +24,7 @@ const (
 
 type poDoc struct {
 	ID             string          `bson:"_id"`
+	ItemID         string          `bson:"item_id"`
 	BOMID          string          `bson:"bom_id"`
 	SOPID          string          `bson:"sop_id"`
 	NodeID         string          `bson:"node_id"`
@@ -54,6 +55,7 @@ type poStaffAssignmentDoc struct {
 func poToDoc(po *models.ProductionOrder) *poDoc {
 	return &poDoc{
 		ID:             po.ID,
+		ItemID:         po.ItemID,
 		BOMID:          po.BOMID,
 		SOPID:          po.SOPID,
 		NodeID:         po.NodeID,
@@ -73,6 +75,7 @@ func poToDoc(po *models.ProductionOrder) *poDoc {
 func docToPO(d *poDoc) *models.ProductionOrder {
 	return &models.ProductionOrder{
 		ID:             d.ID,
+		ItemID:         d.ItemID,
 		BOMID:          d.BOMID,
 		SOPID:          d.SOPID,
 		NodeID:         d.NodeID,
@@ -204,7 +207,7 @@ func (r *productionOrderRepository) Delete(ctx context.Context, id string) error
 
 func (r *productionOrderRepository) SaveSnapshot(ctx context.Context, snap *models.BOMSnapshot) error {
 	doc := bson.M{
-		"_id":                 snap.POID,
+		"_id":                snap.POID,
 		"locked_bom_version": snap.LockedBOMVersion,
 		"snapshot_data":      snap.SnapshotData,
 	}

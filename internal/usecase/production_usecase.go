@@ -90,6 +90,7 @@ func (uc *productionUseCase) CreateProductionOrder(ctx context.Context, bomID, n
 	// 5. Create the Production Order
 	po := &models.ProductionOrder{
 		ID:           uuid.NewString(),
+		ItemID:       bom.OutputItemID,
 		BOMID:        bomID,
 		SOPID:        sop.ID,
 		NodeID:       nodeID,

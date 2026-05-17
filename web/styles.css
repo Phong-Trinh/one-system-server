@@ -1381,9 +1381,70 @@ tr:hover {
     width: 100%;
 }
 
+.task-card.waiting-to-start {
+    border-color: #3b82f6;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    animation: premium-vibrate-blue 3s ease-in-out infinite;
+}
+
 .task-card.ready-to-finish {
     border-color: var(--accent);
-    box-shadow: 0 0 15px rgba(244, 63, 94, 0.3);
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+    animation: premium-vibrate-red 3s ease-in-out infinite;
+}
+
+@keyframes premium-vibrate-blue {
+    0%, 100%, 30% {
+        transform: translate(0, 0) rotate(0deg);
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    }
+    32% {
+        transform: translate(-1.5px, 1px) rotate(-0.3deg);
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.55);
+    }
+    34% {
+        transform: translate(1.5px, -1px) rotate(0.3deg);
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.55);
+    }
+    36% {
+        transform: translate(-1px, -1.5px) rotate(-0.3deg);
+        box-shadow: 0 0 22px rgba(59, 130, 246, 0.6);
+    }
+    38% {
+        transform: translate(1px, 1.5px) rotate(0.3deg);
+        box-shadow: 0 0 22px rgba(59, 130, 246, 0.6);
+    }
+    40% {
+        transform: translate(0, 0) rotate(0deg);
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    }
+}
+
+@keyframes premium-vibrate-red {
+    0%, 100%, 30% {
+        transform: translate(0, 0) rotate(0deg);
+        box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+    }
+    32% {
+        transform: translate(-1.5px, 1px) rotate(-0.3deg);
+        box-shadow: 0 0 20px rgba(244, 63, 94, 0.55);
+    }
+    34% {
+        transform: translate(1.5px, -1px) rotate(0.3deg);
+        box-shadow: 0 0 20px rgba(244, 63, 94, 0.55);
+    }
+    36% {
+        transform: translate(-1px, -1.5px) rotate(-0.3deg);
+        box-shadow: 0 0 22px rgba(244, 63, 94, 0.6);
+    }
+    38% {
+        transform: translate(1px, 1.5px) rotate(0.3deg);
+        box-shadow: 0 0 22px rgba(244, 63, 94, 0.6);
+    }
+    40% {
+        transform: translate(0, 0) rotate(0deg);
+        box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+    }
 }
 
 .batch-card {
@@ -1538,4 +1599,70 @@ tr:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+/* ─── KDS UX Expert Additions ─────────────────────────────────────────── */
+.highlight-qty {
+    color: var(--gold);
+    font-weight: 800;
+    font-size: 1.15rem;
+    padding: 0 4px;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.machine-badge {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+.task-card.waiting-to-start .machine-badge {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.08);
+    color: #93c5fd;
+}
+
+.task-card.ready-to-finish .machine-badge {
+    border-color: rgba(244, 63, 94, 0.4);
+    background: rgba(244, 63, 94, 0.08);
+    color: #fca5a5;
+}
+
+.po-pills-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.po-pill {
+    font-family: 'Outfit', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+}
+
+.task-card.waiting-to-start .po-pill {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: rgba(59, 130, 246, 0.1);
+    color: #93c5fd;
+}
+
+.task-card.ready-to-finish .po-pill {
+    border-color: rgba(244, 63, 94, 0.3);
+    background: rgba(244, 63, 94, 0.1);
+    color: #fca5a5;
 }

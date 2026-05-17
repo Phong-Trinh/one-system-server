@@ -75,9 +75,11 @@ type KDSBatchView struct {
 	SOPStepID string  `json:"sop_step_id"`
 	StepName  string  `json:"step_name"`  // SOPStep.Description or ID as fallback
 	MachineID string  `json:"machine_id"`
+	ItemID    string  `json:"item_id"`    // ID of the target product
 	Duration  int     `json:"duration"`   // SOPStep.Duration in seconds
 	Status    string  `json:"status"`
 	Qty       float64 `json:"qty"`
+	SlotsUsed float64 `json:"slots_used"`
 	Elapsed   int     `json:"elapsed"`    // Seconds since StartedAt (server-computed, avoids client clock drift)
 }
 
@@ -112,8 +114,10 @@ func (h *KDSHandler) ListBatches(c *gin.Context) {
 			POID:      b.POID,
 			SOPStepID: b.SOPStepID,
 			MachineID: b.MachineID,
+			ItemID:    b.ItemID,
 			Status:    string(b.Status),
 			Qty:       b.Qty,
+			SlotsUsed: b.SlotsUsed,
 		}
 
 		// Lookup step for human-readable name and duration

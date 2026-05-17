@@ -66,9 +66,11 @@ func SeedKitchenData(
 		{ID: "ITEM_GA_TUOI", OrgID: orgID, Name: "Thịt Gà Tươi", SKU: "RM-GA-001", Type: models.ItemTypeRawMaterial, BaseUnit: "gram"},
 		{ID: "ITEM_BANH_MI", OrgID: orgID, Name: "Bánh Mì Tròn", SKU: "RM-BM-001", Type: models.ItemTypeRawMaterial, BaseUnit: "piece"},
 		{ID: "ITEM_HANH_TAY", OrgID: orgID, Name: "Hành Tây", SKU: "RM-HT-001", Type: models.ItemTypeRawMaterial, BaseUnit: "gram"},
+		{ID: "ITEM_KHOAI_TAY", OrgID: orgID, Name: "Khoai Tây Raw", SKU: "RM-KT-001", Type: models.ItemTypeRawMaterial, BaseUnit: "gram"},
 		{ID: "ITEM_HAMBURGER_BO", OrgID: orgID, Name: "Hamburger Bò", SKU: "PRD-HB-001", Type: models.ItemTypeProduct, BaseUnit: "piece"},
 		{ID: "ITEM_HAMBURGER_GA", OrgID: orgID, Name: "Hamburger Gà", SKU: "PRD-HG-001", Type: models.ItemTypeProduct, BaseUnit: "piece"},
 		{ID: "ITEM_BIT_TET", OrgID: orgID, Name: "Bò Bít Tết", SKU: "PRD-BT-001", Type: models.ItemTypeProduct, BaseUnit: "piece"},
+		{ID: "ITEM_KHOAI_TAY_CHIEN", OrgID: orgID, Name: "Khoai Tây Chiên", SKU: "PRD-KTC-001", Type: models.ItemTypeProduct, BaseUnit: "piece"},
 	}
 	for _, it := range items {
 		_ = itemRepo.Delete(ctx, it.ID)
@@ -139,6 +141,20 @@ func SeedKitchenData(
 			steps: []models.SOPStep{
 				{ID: "STEP_BT_NUONG", Description: "Nướng Bít Tết", StationTypeID: "ST_BEP_NUONG", SlotConsumption: 3, AllowMix: false, Duration: 25, DependsOn: []string{}},
 				{ID: "STEP_BT_SAP_XEP", Description: "Sắp Xếp Món", StationTypeID: "ST_BAN_RAP", SlotConsumption: 1, AllowMix: false, Duration: 12, DependsOn: []string{"STEP_BT_NUONG"}},
+			},
+		},
+		{
+			bomID:        "BOM_KHOAI_TAY_CHIEN",
+			outputItemID: "ITEM_KHOAI_TAY_CHIEN",
+			lines: []struct {
+				itemID string
+				qty    float64
+			}{
+				{"ITEM_KHOAI_TAY", 200},
+			},
+			steps: []models.SOPStep{
+				{ID: "STEP_KC_CHIEN", Description: "Chiên Khoai Tây", StationTypeID: "ST_MAY_CHIEN", SlotConsumption: 1, AllowMix: true, Duration: 20, DependsOn: []string{}},
+				{ID: "STEP_KC_SAP_XEP", Description: "Sắp Xếp Món", StationTypeID: "ST_BAN_RAP", SlotConsumption: 1, AllowMix: true, Duration: 8, DependsOn: []string{"STEP_KC_CHIEN"}},
 			},
 		},
 	}

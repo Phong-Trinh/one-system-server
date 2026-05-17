@@ -1551,10 +1551,10 @@ let kdsTasks = [];      // KDSBatchView[] from GET /kds/batches
 let frontOrders = [];   // ProductionOrder[] from POST /production/orders
 let pooledOrders = [];  // PooledOrderView[] from GET /kds/pool
 let kdsMachines = [
-    { id: 'M1_BEP_NUONG', name: 'Grill #1', capacity: 8 },
-    { id: 'M2_MAY_CHIEN_1', name: 'Fryer #1', capacity: 2 },
-    { id: 'M3_MAY_CHIEN_2', name: 'Fryer #2', capacity: 2 },
-    { id: 'M4_BAN_RAP', name: 'Assembly', capacity: 10 }
+    { id: 'M1_BEP_NUONG', name: 'Bếp Nướng #1', capacity: 8 },
+    { id: 'M2_MAY_CHIEN_1', name: 'Máy Chiên #1', capacity: 2 },
+    { id: 'M3_MAY_CHIEN_2', name: 'Máy Chiên #2', capacity: 2 },
+    { id: 'M4_BAN_RAP', name: 'Bàn Ráp', capacity: 10 }
 ];
 let kdsPollingInterval = null;
 let poolPollingInterval = null;
@@ -1562,9 +1562,10 @@ let poolPollingInterval = null;
 // ─── Demo Data (BOM IDs must exist in your DB) ────────────────────────────────
 // These match the SOPs defined in hamburger_peak_demo.go
 const DEMO_ORDERS = [
-    { bom_id: 'BOM_HAMBURGER_BO', _label: 'Hamburger Bò', delay: 0 },
-    { bom_id: 'BOM_HAMBURGER_GA', _label: 'Hamburger Gà', delay: 5000 },
-    { bom_id: 'BOM_BIT_TET', _label: 'Bò Bít Tết', delay: 30000 }
+    { bom_id: 'BOM_HAMBURGER_BO', _label: 'Hamburger Bò', target_qty: 2, delay: 0 },
+    { bom_id: 'BOM_KHOAI_TAY_CHIEN', _label: 'Khoai Tây Chiên', target_qty: 1, delay: 0 },
+    { bom_id: 'BOM_HAMBURGER_GA', _label: 'Hamburger Gà', target_qty: 1, delay: 5000 },
+    { bom_id: 'BOM_BIT_TET', _label: 'Bò Bít Tết', target_qty: 1, delay: 30000 }
 ];
 
 // ─── Toast Notifications ─────────────────────────────────────────────────────
@@ -1588,7 +1589,7 @@ async function runPeakDemo() {
         showToast('Vui lòng chọn Node (Chi nhánh) trước!', 'warning');
         return;
     }
-    showToast('⚡ Bắt đầu Peak Demo — 3 đơn hàng sẽ đến lần lượt...', 'info');
+    showToast('⚡ Bắt đầu Peak Demo — Đơn hàng sẽ đến lần lượt...', 'info');
     frontOrders = [];
     updateDualView();
 
@@ -1598,14 +1599,14 @@ async function runPeakDemo() {
             const res = await fetch(`${API_BASE}/production/orders`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bom_id: demo.bom_id, node_id: activeNodeId, target_qty: 1 })
+                body: JSON.stringify({ bom_id: demo.bom_id, node_id: activeNodeId, target_qty: demo.target_qty || 1 })
             });
             if (res.ok) {
                 const po = await res.json();
                 // Attach UI label for display
-                po._label = demo._label;
+                po._label = `${demo.target_qty}x ${demo._label}`;
                 frontOrders.push(po);
-                showToast(`🛒 Đơn mới: ${demo._label} (#${po.id.slice(-6)})`, 'info');
+                showToast(`🛒 Đơn mới: ${demo.target_qty}x ${demo._label} (#${po.id.slice(-6)})`, 'info');
                 updateDualView();
                 // Force an immediate refresh so UI updates instantly
                 refreshPool();
@@ -1817,11 +1818,12 @@ function renderKDSMachines() {
     if (!strip) return;
 
     strip.innerHTML = kdsMachines.map(m => {
-        const active = kdsTasks.filter(t => t.machine_id === m.id && t.status !== 'COMPLETED').length;
+        const activeTasks = kdsTasks.filter(t => t.machine_id === m.id && t.status !== 'COMPLETED');
+        const slotsUsed = activeTasks.reduce((sum, t) => sum + (t.slots_used || 0), 0);
         return `
-            <div class="machine-mini-card ${active > 0 ? 'busy' : ''}">
+            <div class="machine-mini-card ${activeTasks.length > 0 ? 'busy' : ''}">
                 <div style="font-size:0.8rem;font-weight:800;">${m.name}</div>
-                <div style="font-size:0.6rem;color:var(--text-muted);">${active}/${m.capacity} Slots</div>
+                <div style="font-size:0.6rem;color:var(--text-muted);">${slotsUsed}/${m.capacity} Slots</div>
             </div>`;
     }).join('');
 
@@ -1839,14 +1841,68 @@ function renderKDSTaskQueue() {
         return;
     }
 
-    // Group tasks that have the same machine, step, and status
+    // Helper to get a normalized step name for grouping and display
+    function getNormalizedStepName(stepName, itemId) {
+        let nameToFormat = stepName;
+        // Fallbacks for demo generic IDs if they lack descriptions
+        if (stepName === "SAP_XEP_BO") nameToFormat = "Ráp Hamburger Bò";
+        if (stepName === "SAP_XEP_GA") nameToFormat = "Ráp Hamburger Gà";
+        if (stepName === "SAP_XEP_BIT_TET") nameToFormat = "Chuẩn bị Bít Tết";
+
+        const verbs = ["Chiên", "Nướng", "Ráp", "Luộc", "Hấp", "Chuẩn bị", "Làm", "Bọc", "Sắp", "Xắp"];
+        const words = nameToFormat.trim().split(/\s+/);
+
+        let itemLabel = "";
+        if (itemId) {
+            itemLabel = itemId.replace('ITEM_', '').replace('HAMBURGER_', 'Hamburger ').replace('BIT_TET', 'Bít Tết').replace(/_/g, ' ');
+            itemLabel = itemLabel.split(' ').map(w => {
+                if (w.toLowerCase() === 'bít' || w.toLowerCase() === 'tết') return w; // keep accents
+                return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+            }).join(' ');
+        }
+
+        if (words.length > 0 && verbs.includes(words[0])) {
+            let verb = words[0];
+            if (verb === "Sắp" || verb === "Xắp") verb = "Sắp xếp";
+
+            let rest = words.slice(verb === "Sắp xếp" ? 2 : 1).join(" ");
+
+            // Append product name if the step is generic like "món"
+            if ((!rest || rest.toLowerCase() === "món") && itemLabel) {
+                rest = itemLabel;
+            }
+
+            return `${verb} ${rest}`.trim();
+        }
+        return nameToFormat.trim();
+    }
+
+    function formatKDSStepWithQty(normalizedName, qty) {
+        const verbs = ["Chiên", "Nướng", "Ráp", "Luộc", "Hấp", "Chuẩn bị", "Làm", "Bọc", "Sắp", "Xắp"];
+        const words = normalizedName.split(/\s+/);
+
+        if (words.length > 0) {
+            let verb = words[0];
+            if (verb === "Sắp" && words[1] === "xếp") verb = "Sắp xếp";
+
+            if (verbs.includes(verb) || verb === "Sắp xếp") {
+                const rest = words.slice(verb === "Sắp xếp" ? 2 : 1).join(" ");
+                return `${verb} <span class="highlight-qty">${qty} phần</span> ${rest}`.trim();
+            }
+        }
+        return `${normalizedName} (<span class="highlight-qty">${qty} phần</span>)`;
+    }
+
+    // Group tasks that have the same machine, normalized_name, and status
     const grouped = [];
     active.forEach(t => {
-        const key = `${t.machine_id}_${t.step_name}_${t.status}`;
+        const normalizedName = getNormalizedStepName(t.step_name, t.item_id);
+        const key = `${t.machine_id}_${normalizedName}_${t.status}`;
         let group = grouped.find(g => g.key === key);
         if (group) {
             group.po_ids.push(t.po_id.slice(-6).toUpperCase());
             group.batch_ids.push(t.id);
+            group.total_qty += (t.qty || 1);
             // Sync elapsed/duration to the max across grouped items to avoid jitter
             group.elapsed = Math.max(group.elapsed, t.elapsed);
             group.duration = Math.max(group.duration, t.duration);
@@ -1854,12 +1910,13 @@ function renderKDSTaskQueue() {
             grouped.push({
                 key,
                 machine_id: t.machine_id,
-                step_name: t.step_name,
+                normalized_name: normalizedName,
                 status: t.status,
                 elapsed: t.elapsed,
                 duration: t.duration,
                 po_ids: [t.po_id.slice(-6).toUpperCase()],
-                batch_ids: [t.id]
+                batch_ids: [t.id],
+                total_qty: (t.qty || 1)
             });
         }
     });
@@ -1871,30 +1928,37 @@ function renderKDSTaskQueue() {
         const isReady = isCooking && timeLeft === 0;
         const isAllocated = group.status === 'ALLOCATED';
 
-        const bell = isAllocated ? '<span class="notif-bell bell-blue">🔔</span>'
+        const bell = isAllocated ? '<span class="notif-bell bell-blue shake">🔔</span>'
             : isReady ? '<span class="notif-bell bell-red shake">🔔</span>'
                 : '';
 
         const statusLabel = { QUEUED: 'QUEUED', ALLOCATED: 'ALLOCATED', IN_PROGRESS: 'COOKING' }[group.status] || group.status;
-        const poDisplay = group.po_ids.map(id => `#${id}`).join(', ');
         const batchIdsStr = group.batch_ids.join(',');
 
+        // Resolve human-readable machine name
+        const mach = kdsMachines.find(m => m.id === group.machine_id);
+        const machineDisplayName = mach ? mach.name : (group.machine_id || 'Chờ máy...');
+
+        const stepDisplayHtml = formatKDSStepWithQty(group.normalized_name, group.total_qty);
+
         return `
-            <div class="task-card priority-medium ${isReady ? 'ready-to-finish' : ''}">
+            <div class="task-card priority-medium ${isReady ? 'ready-to-finish' : ''} ${isAllocated ? 'waiting-to-start' : ''}">
                 <div class="task-header">
-                    <div style="display:flex;align-items:center;gap:8px;font-size:0.8rem;font-weight:700;">
+                    <div style="display:flex;align-items:center;gap:8px;">
                         ${bell}
-                        <span class="task-id">${poDisplay}</span>
+                        <div class="po-pills-container">
+                            ${group.po_ids.map(id => `<span class="po-pill">#${id}</span>`).join('')}
+                        </div>
                     </div>
                     <span class="status-badge status-${group.status.toLowerCase()}">${statusLabel}</span>
                 </div>
                 <div class="task-body">
-                    <h3 style="margin:0">${group.step_name}</h3>
-                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">
-                        ${group.machine_id || 'Chờ máy...'}
+                    <h3 style="margin:0; line-height: 1.4;">${stepDisplayHtml}</h3>
+                    <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
+                        <span class="machine-badge">${machineDisplayName}</span>
                     </div>
                     ${isCooking ? `
-                        <div class="cooking-progress" style="margin-top:10px;">
+                        <div class="cooking-progress" style="margin-top:12px;">
                             <div class="cooking-bar">
                                 <div class="cooking-fill" style="width:${progress}%"></div>
                                 <span class="cooking-time-left">${timeLeft}s</span>

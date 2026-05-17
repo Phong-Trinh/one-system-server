@@ -42,6 +42,7 @@ func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.
 		POID:      po.ID,
 		SOPStepID: step.ID,
 		NodeID:    po.NodeID,
+		ItemID:    po.ItemID,
 		Qty:       po.TargetQty,
 		SlotsUsed: slotsUsed,
 		Status:    models.BatchQueued,
@@ -136,105 +137,134 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			continue
 		}
 
+		// Collect active step descriptions/names for this machine to prioritize matching queued tasks
+		activeStepNames := make(map[string]bool)
+		for _, ab := range activeBatches {
+			if step, err := uc.sopRepo.FindStepByID(ctx, ab.SOPStepID); err == nil && step != nil {
+				if step.AllowMix {
+					activeStepNames[step.Description] = true
+				}
+			}
+		}
+
 		// 4. Try to find matching tasks in the queue for this machine
-		for i := 0; i < len(queued); i++ {
-			b := queued[i]
-			if b == nil {
-				continue
-			}
+		// We will evaluate matching active tasks first (Pass 1), and then other tasks (Pass 2)
+		for pass := 1; pass <= 2; pass++ {
+			for i := 0; i < len(queued); i++ {
+				b := queued[i]
+				if b == nil {
+					continue
+				}
 
-			// Must match station type
-			step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
-			if step == nil || step.StationTypeID != m.StationTypeID {
-				continue
-			}
+				// Must match station type
+				step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
+				if step == nil || step.StationTypeID != m.StationTypeID {
+					continue
+				}
 
-			if currentLoad >= m.MaxCapacity {
-				break // Machine full for this run
-			}
+				// Priority pass: only accept steps matching currently active step descriptions
+				if step.AllowMix && len(activeStepNames) > 0 {
+					isMatchingActive := activeStepNames[step.Description]
+					if pass == 1 && !isMatchingActive {
+						continue // skip non-matching in first pass
+					}
+					if pass == 2 && isMatchingActive {
+						continue // already evaluated in first pass
+					}
+				} else if pass == 1 {
+					// If no active mixing steps or step doesn't allow mix, skip first pass
+					continue
+				}
 
-			// Check capacity and handle splitting
-			canAllocate := false
-			needsSplit := false
-			fitQty := b.Qty
-			fitSlots := b.SlotsUsed
-			limit := m.MaxCapacity
+				if currentLoad >= m.MaxCapacity {
+					break // Machine full for this run
+				}
 
-			if currentLoad+b.SlotsUsed > limit {
-				// Try to split
-				if step.SlotConsumption > 0 {
-					available := limit - currentLoad
-					fitQty = float64(int(available / step.SlotConsumption)) // Greedy floor
-					if fitQty > 0 {
-						fitSlots = fitQty * step.SlotConsumption
-						needsSplit = true
+				// Check capacity and handle splitting
+				canAllocate := false
+				needsSplit := false
+				fitQty := b.Qty
+				fitSlots := b.SlotsUsed
+				limit := m.MaxCapacity
+
+				if currentLoad+b.SlotsUsed > limit {
+					// Try to split
+					if step.SlotConsumption > 0 {
+						available := limit - currentLoad
+						fitQty = float64(int(available / step.SlotConsumption)) // Greedy floor
+						if fitQty > 0 {
+							fitSlots = fitQty * step.SlotConsumption
+							needsSplit = true
+						} else {
+							continue // Cannot fit even one unit
+						}
 					} else {
-						continue // Cannot fit even one unit
+						continue // Zero consumption but still exceeds limit? Should not happen.
 					}
-				} else {
-					continue // Zero consumption but still exceeds limit? Should not happen.
 				}
-			}
 
-			// Allocation Strategy Logic
-			if m.AllocationStrategy == models.StrategyAsync {
-				canAllocate = true
-			} else {
-				// BATCH_SYNC
-				if currentLoad == 0 {
-					canAllocate = true
-				} else if b.ItemID == referenceItemID {
+				// Allocation Strategy Logic
+				if m.AllocationStrategy == models.StrategyAsync {
 					canAllocate = true
 				} else {
-					// Check if BOTH the existing steps and the new step allow mixing
-					// If any of them has AllowMix = false, they cannot be mixed.
-
-					// We need to fetch the SOPStep for the reference batch
-					refBatch, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
-					// Note: referenceItemID is tracked, but we need the SOPStep of one of the active batches
-					var refStep *models.SOPStep
-					if len(refBatch) > 0 {
-						refStep, _ = uc.sopRepo.FindStepByID(ctx, refBatch[0].SOPStepID)
-					}
-
-					if step.AllowMix && refStep != nil && refStep.AllowMix {
+					// BATCH_SYNC
+					if currentLoad == 0 {
 						canAllocate = true
+					} else if b.ItemID == referenceItemID {
+						canAllocate = true
+					} else {
+						// Check if BOTH the existing steps and the new step allow mixing
+						// If any of them has AllowMix = false, they cannot be mixed.
+
+						// We need to fetch the SOPStep for the reference batch
+						refBatch, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
+						var refStep *models.SOPStep
+						if len(refBatch) > 0 {
+							refStep, _ = uc.sopRepo.FindStepByID(ctx, refBatch[0].SOPStepID)
+						}
+
+						if step.AllowMix && refStep != nil && refStep.AllowMix {
+							canAllocate = true
+						}
 					}
 				}
-			}
 
-			if canAllocate {
-				if needsSplit {
-					remainderQty := b.Qty - fitQty
-					// Create remainder batch
-					remainder := &models.ProductionBatch{
-						ID:        uuid.NewString(),
-						POID:      b.POID,
-						SOPStepID: b.SOPStepID,
-						NodeID:    b.NodeID,
-						ItemID:    b.ItemID,
-						Qty:       remainderQty,
-						SlotsUsed: remainderQty * (fitSlots / fitQty),
-						Status:    models.BatchQueued,
+				if canAllocate {
+					if needsSplit {
+						remainderQty := b.Qty - fitQty
+						// Create remainder batch
+						remainder := &models.ProductionBatch{
+							ID:        uuid.NewString(),
+							POID:      b.POID,
+							SOPStepID: b.SOPStepID,
+							NodeID:    b.NodeID,
+							ItemID:    b.ItemID,
+							Qty:       remainderQty,
+							SlotsUsed: remainderQty * (fitSlots / fitQty),
+							Status:    models.BatchQueued,
+						}
+						_ = uc.batchRepo.Create(ctx, remainder)
+
+						// Update current batch to the portion that fits
+						b.Qty = fitQty
+						b.SlotsUsed = fitSlots
 					}
-					_ = uc.batchRepo.Create(ctx, remainder)
 
-					// Update current batch to the portion that fits
-					b.Qty = fitQty
-					b.SlotsUsed = fitSlots
-				}
+					b.MachineID = m.ID
+					b.Status = models.BatchAllocated
+					now := time.Now()
+					b.AllocatedAt = &now
 
-				b.MachineID = m.ID
-				b.Status = models.BatchAllocated
-				now := time.Now()
-				b.AllocatedAt = &now
-
-				if err := uc.batchRepo.Update(ctx, b); err == nil {
-					currentLoad += b.SlotsUsed
-					if referenceItemID == "" {
-						referenceItemID = b.ItemID
+					if err := uc.batchRepo.Update(ctx, b); err == nil {
+						currentLoad += b.SlotsUsed
+						if referenceItemID == "" {
+							referenceItemID = b.ItemID
+						}
+						if step.AllowMix {
+							activeStepNames[step.Description] = true
+						}
+						queued[i] = nil
 					}
-					queued[i] = nil
 				}
 			}
 		}
