@@ -7,9 +7,9 @@ This document summarizes the core business logic and workflows designed for the 
 ## 1. Node Hierarchy & Organization
 
 - **Tenant (ORG)**: A chain organization (e.g., "Nobi Fried Chicken").
-- **HQ**: Central governance for all financial and operational data. **Owns procurement authority** — HQ is the sole node authorized to raise Purchase Orders to external suppliers.
-- **Store**: Point of sale and local production (kitchen). ~~Local procurement~~ → Stores do **not** perform external procurement; they request stock from Factory or other Stores.
-- **Factory (Central Kitchen)**: Large-scale production and distribution of semi-products and finished products. Receives raw materials from HQ-issued Purchase Orders. *(v1 supports a single Factory per Tenant. Multi-factory support is deferred to a future phase.)*
+- **HQ**: Central governance for all financial and operational data. **Owns procurement authority** — HQ is the sole node authorized to review Purchase Requisitions (PR) and raise Purchase Orders (`HQ.PurO`) to external suppliers.
+- **Store**: Point of sale and local production (kitchen). Stores do **not** perform external procurement. They issue Replenishment Orders (`S.RO`) for internal restocking (from Factory or other Stores) and Purchase Requisitions (`S.PR`) to HQ for CapEx/exceptional needs.
+- **Factory (Central Kitchen)**: Large-scale production and distribution of semi-products and finished products. Issues `F.RO` for raw materials and `F.PR` for CapEx to HQ. Receives materials from `HQ.PurO`-linked deliveries. *(v1 supports a single Factory per Tenant. Multi-factory support is deferred to a future phase.)*
 
 ### Item Classification
 
@@ -20,45 +20,10 @@ All physical entities in the system are called **Items** (not "products"). Items
 - **Raw Material** – Base ingredients sourced from external suppliers.
 - **Asset/Supply** – Non-food items a store needs but does not sell (e.g., POS machines, packaging supplies).
 
-## 2. Supply Chain Workflows
-
-### 2.1 Replenishment Flow (Store → Factory → HQ → Supplier)
-
-*Goal: Managing stock replenishment across nodes via a controlled, top-down procurement chain.*
-
-**Trigger (Primary — Automatic):** When a Store item's stock level reaches or falls below its configured minimum threshold, the system **automatically generates a `SupplyRequest`** targeting the Factory — no staff action required.
-
-**Trigger (Secondary — Manual):** Store staff may also manually create a `SupplyRequest` at any time outside of the threshold trigger (e.g., anticipating demand, correcting an oversight).
-
-1. **Supply Request**: Generated automatically by the system on threshold breach, or optionally created manually by Store staff.
-2. **Factory Review**: Factory manager reviews and, using BOM data, determines the raw materials needed to fulfill the request.
-3. **Material Request to HQ**: Factory raises a `MaterialRequest` to HQ listing required raw materials.
-4. **HQ Purchase Order**: HQ reviews and issues a `PurchaseOrder` to the external supplier.
-5. **Supplier Delivery to Factory**: Supplier delivers goods to the Factory.
-6. **Goods Receipt (Stock In)**: Factory Stock Keeper confirms receipt and performs a Stock In, **linked to the originating PO**. No unlinked inbound stock is permitted.
-7. **Production**: Factory uses received raw materials to produce semi-products/products per the relevant BOM + SOP.
-8. **Factory → Store Shipment**: Factory creates a `ShipmentOrder` containing:
-   - Driver contact (phone number)
-   - Photo evidence of goods before dispatch
-   - Shipping fee
-   - Upon dispatch confirmation: system executes **Stock Out** at Factory.
-9. **Store Receipt**: Store staff confirms arrival → system executes **Stock In** at Store. **No paper-based (ký tay) receipts — all confirmation is digital.**
-
-> **Key rule:** HQ holds exclusive authority to purchase from external suppliers. The Factory requests materials; it does not independently procure.
-
----
-
-### 2.2 Inter-Store Transfer *(Optional — In Scope)*
-
-*Goal: Allow a Store to borrow or buy stock from another Store when Factory replenishment is too slow.*
-
-1. **Request**: Store A creates a `StoreTransferRequest` targeting Store B for a specific item and quantity.
-2. **Review**: Store B manager reviews availability and approves or rejects.
-3. **Approval**: Upon approval, a `TransferOrder` is generated.
-4. **Dispatch & Receipt**: Stock Out at Store B; Store A confirms receipt → Stock In at Store A.
+*(Note: Supply Chain Workflows and Inventory & Stock Management have been extracted to `OneSystem Supply Chain & Inventory.md`)*
 
 
-## 3. Bill of Materials (BOM) & Standard Operating Procedure (SOP)
+## 2. Bill of Materials (BOM) & Standard Operating Procedure (SOP)
 
 ### 3.1 Bill of Materials (BOM)
 
@@ -287,7 +252,7 @@ On completion:
 
 ---
 
-## 4. Operations & Sales Workflows
+## 3. Operations & Sales Workflows
 
 ### 4.1 Order Ingestion
 
@@ -311,49 +276,11 @@ On completion:
 
 ---
 
-## 5. Inventory & Stock Management
-
-### 5.1 Minimum Stock Threshold
-
-- Each item at each node has a configurable **minimum stock level**.
-- When stock drops to or below this threshold, the system **automatically triggers a `SupplyRequest`** (see Section 2.1). Staff may also adjust thresholds per item per node based on operational needs.
-
-### 5.2 Unit of Measure (UoM) & Conversion
-
-**Solution: Base Unit + Packaging Unit model with automatic conversion.**
-
-Each item is defined with:
-- A **Base Unit (BU)** — the smallest consumable unit. All internal stock levels, BOM quantities, and kitchen consumption are tracked in base units.
-- One or more **Packaging Units (PU)** — the unit used for ordering, receiving, and dispatching between nodes. Each PU has a defined conversion ratio to the base unit.
-
-| Item | Base Unit | Packaging Unit | Conversion |
-|---|---|---|---|
-| Burger bun | piece | bag | 1 bag = 10 pieces |
-| Soft drink can | can | case | 1 case = 24 cans (4 blocks × 6) |
-| Cooking oil | ml | bottle | 1 bottle = 1,000 ml |
-
-**Rules:**
-- **HQ PO to Supplier** — ordered in Packaging Units.
-- **Factory Goods Receipt** — received in Packaging Units; system converts to Base Units for stock.
-- **Factory → Store Shipment** — dispatched in Packaging Units; system converts to Base Units on Store receipt.
-- **BOM & kitchen consumption** — always in Base Units.
-- **Minimum stock threshold** — configured and displayed in Base Units for precision.
-
-This means staff always work in familiar packaging quantities when ordering/receiving, while the system maintains accurate base-unit stock counts internally.
-
-### 5.3 Price Variance by Store
-
-- Item prices (selling price, internal transfer price) **may differ between Stores**.
-- The pricing model must support store-level price configuration per item.
-
----
-
-## 6. Open Issues & Decisions Required
+## 4. Open Issues & Decisions Required
 
 | # | Question | Status | Owner |
 |---|---|---|---|
-| 1 | What approval flow and permission levels apply to Inter-Store Transfers? | ⏳ Open | Business Owner |
-| 2 | Are staff labor wages tracked in an existing HR/payroll system, or does OneSystem need to store hourly rates per staff member itself? This affects how Labor Cost is calculated on Production Orders. | ⏳ Open | Business Owner |
+| 1 | Are staff labor wages tracked in an existing HR/payroll system, or does OneSystem need to store hourly rates per staff member itself? This affects how Labor Cost is calculated on Production Orders. | ⏳ Open | Business Owner |
 
 ---
 
