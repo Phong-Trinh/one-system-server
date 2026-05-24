@@ -73,12 +73,15 @@ A specific physical machine instance at a node.
 | `station_type_id` | string | FK → `StationType` |
 | `node_id` | string | FK → `Node` |
 | `max_slots` | int | Total capacity in `StationType.capacity_unit` |
-| `status` | MachineStatus | `IDLE` \| `BUSY` |
+| `status` | MachineStatus | `IDLE` \| `BUSY` \| `UNDER_MAINTENANCE` \| `DECOMMISSIONED` |
 | `current_batch_id` | string? | FK → `ProductionBatch` (null when IDLE) |
+| `linked_asset_id` | string? | FK → `Asset` (Supply Chain domain) — Populated when this machine was procured via PR → PurO → GR. `null` for pre-existing or manually registered machines. |
 
 **Rules:**
 - A machine belongs to exactly one Node.
-- `status` is transitioned by the batch allocation engine — never set manually.
+- `IDLE` and `BUSY` are transitioned by the batch allocation engine — never set manually.
+- `UNDER_MAINTENANCE` and `DECOMMISSIONED` are driven by the Asset lifecycle (Supply Chain domain), synchronized from `Asset.status`. They are never set by the batch engine.
+- A `DECOMMISSIONED` machine is excluded from the bin-packing algorithm and cannot accept new `ProductionBatch` entries.
 
 ---
 
@@ -221,6 +224,11 @@ The central execution record. Generated from a BOM + SOP to produce a target qua
 | `created_at` | time | |
 | `updated_at` | time | |
 
+**Rules:**
+- **Stock Availability Check:** Before transitioning `PENDING → IN_PROGRESS`, the system verifies `NodeStock.qty_on_hand ≥ (BOMLine.qty × planned_input)` for every ingredient in the BOM snapshot. If any ingredient has insufficient stock, the PO remains `PENDING` and the Factory Manager is notified.
+- A blocked PO **auto-resumes** when a new `GoodsReceipt` or replenishment raises the relevant `NodeStock.qty_on_hand` above the required threshold.
+- `PENDING` means: created but awaiting stock or scheduling. `IN_PROGRESS` means: stock confirmed and execution has begun.
+
 ---
 
 ### BOMSnapshot
@@ -283,7 +291,9 @@ Records actual material consumed during a batch. Written at batch completion.
 | `qty_consumed` | float64 | Actual quantity consumed (base unit) |
 | `unit_cost` | float64 | Unit cost of this item at the time of the supplying Goods Receipt |
 
-**Purpose:** Feeds directly into `POCostRecord.material_cost`.
+**Purpose (dual effect):**
+- **Costing:** Feeds directly into `POCostRecord.material_cost` (`Σ qty_consumed × unit_cost`).
+- **Inventory:** Decrements `NodeStock.qty_on_hand` for `(ProductionOrder.node_id, item_id)` by `qty_consumed`. This is the production domain's write path into the shared inventory ledger. After each decrement, the system checks `NodeStock.qty_on_hand ≤ NodeItemConfig.reorder_point` to determine whether to fire replenishment.
 
 ---
 
@@ -340,7 +350,12 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
 [ProductionOrder created]
   ├── BOMSnapshot locked (captures BOM version)
   ├── POStaffAssignment records assigned staff
-  └── PO decomposed into Tasks (one per SOPStep)
+  ├── Stock Availability Check (per BOMLine ingredient):
+  │     NodeStock.qty_on_hand ≥ BOMLine.qty × planned_input?
+  │     ├── ✅ All available → PO.status = IN_PROGRESS
+  │     └── ❌ Insufficient → PO.status = PENDING (blocked; Factory Manager notified)
+  │                         PO auto-resumes when replenishment stock arrives
+  └── If IN_PROGRESS: PO decomposed into Tasks (one per SOPStep)
         │
         ▼
 [Tasks enter Priority Queue by StationType]
@@ -363,6 +378,8 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
         ▼
 [Batch COMPLETED]
   ├── StockConsumption records written (qty_consumed × unit_cost)
+  ├── NodeStock.qty_on_hand decremented for each consumed item  ← Stock Out
+  ├── System checks: qty_on_hand ≤ reorder_point? → fire replenishment if true
   └── Machine → IDLE (next batch dequeued)
         │
         ▼ (when all batches for PO are COMPLETED)
@@ -383,7 +400,7 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
 | Model | Depends On |
 |---|---|
 | `Node` | `Organization` |
-| `Machine` | `Node`, `StationType` |
+| `Machine` | `Node`, `StationType`, `Asset`? (Supply Chain — optional provenance) |
 | `Staff` | `Node` |
 | `ItemCapacityConfig` | `Item`, `StationType` |
 | `UoM` | `Item` |
@@ -395,7 +412,7 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
 | `BOMSnapshot` | `ProductionOrder`, `BOM` |
 | `POStaffAssignment` | `ProductionOrder`, `Staff` |
 | `ProductionBatch` | `ProductionOrder`, `Machine`, `Item` |
-| `StockConsumption` | `ProductionOrder`, `ProductionBatch`, `Item` |
+| `StockConsumption` | `ProductionOrder`, `ProductionBatch`, `Item`, `NodeStock` (mutates) |
 | `OverheadConfig` | `Item`, `Node`? |
 | `POCostRecord` | `ProductionOrder` |
 | `CostAdjustment` | `POCostRecord`, `Staff` |

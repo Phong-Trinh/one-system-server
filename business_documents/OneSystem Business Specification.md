@@ -54,7 +54,7 @@ Generated from BOM + SOP. A Production Order captures:
 | Assigned Station | Equipment or kitchen station allocated for this run |
 | Assigned Staff / Shift | Staff or shift responsible |
 | Actual Output Quantity | Recorded on completion — enables yield tracking vs. expected |
-| Status | `PENDING` → `IN_PROGRESS` → `COMPLETED` / `CANCELLED` |
+| Status | `PENDING` → `IN_PROGRESS` → `COMPLETED` / `CANCELLED`. **Note:** Transition from `PENDING → IN_PROGRESS` requires a stock availability check — the system verifies every ingredient has sufficient `NodeStock.qty_on_hand`. If any ingredient is short, the order stays `PENDING` and the manager is notified; it auto-resumes when replenishment arrives. |
 | **Total Production Cost** | **Total cost of this execution, calculated and locked at completion** |
 
 ---
@@ -140,9 +140,10 @@ Represents a specific physical machine instance.
 | `id` | e.g., `M_FRYER_01`, `M_FRYER_02`, `M_OVEN_01` |
 | `station_type_id` | FK → `StationType` |
 | `max_capacity` | Total capacity in the `StationType.capacity_unit` (e.g., `6` slots, `6` liters) |
-| `status` | `IDLE` \| `BUSY` |
+| `status` | `IDLE` \| `BUSY` \| `UNDER_MAINTENANCE` \| `DECOMMISSIONED`. `IDLE`/`BUSY` are managed by the batch engine. `UNDER_MAINTENANCE`/`DECOMMISSIONED` are driven by the Asset lifecycle (see §2.3 of Supply Chain doc). A `DECOMMISSIONED` machine cannot receive new batches. |
 | `current_batch_id` | FK → `ProductionBatch` currently running on this machine (nullable when IDLE) |
 | `node_id` | The Store or Factory this machine belongs to |
+| `linked_asset_id` | FK → `Asset` (optional) — populated when this machine was procured via a Purchase Requisition. Traces the machine back to its PR → PurO → GR origin. |
 
 ---
 
@@ -204,6 +205,12 @@ Each step in an SOP now carries a `station_type_id` (optional) and a list of `in
 
 ```
 Production Order created
+        │
+        ▼
+Stock Availability Check (per BOM ingredient):
+  NodeStock.qty_on_hand ≥ required qty for each ingredient?
+  ├── ✅ All available → PO status = IN_PROGRESS (proceed)
+  └── ❌ Insufficient → PO stays PENDING (manager notified; auto-resumes on replenishment)
         │
         ▼
 System decomposes PO into Tasks
