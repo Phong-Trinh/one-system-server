@@ -11,7 +11,7 @@ This document describes every domain model, its fields, relationships, and the d
 ```
 ┌─────────────────────────────────────────────┐
 │  Layer 1 — Config / Org                     │
-│  Node · StationType · Machine · Staff       │
+│  Node · EquipmentType · Machine · Staff       │
 ├─────────────────────────────────────────────┤
 │  Layer 2 — Item Config                      │
 │  ItemCapacityConfig                         │
@@ -53,7 +53,7 @@ Represents a physical or logical operational location within a Tenant (ORG).
 
 ---
 
-### StationType
+### EquipmentType
 Defines a category of kitchen equipment (e.g., Fryer, Oven, Grill).
 
 | Field | Type | Description |
@@ -70,9 +70,9 @@ A specific physical machine instance at a node.
 | Field | Type | Description |
 |---|---|---|
 | `id` | string | e.g., `M_FRYER_01`, `M_OVEN_02` |
-| `station_type_id` | string | FK → `StationType` |
+| `equipment_type_id` | string | FK → `EquipmentType` |
 | `node_id` | string | FK → `Node` |
-| `max_slots` | int | Total capacity in `StationType.capacity_unit` |
+| `max_slots` | int | Total capacity in `EquipmentType.capacity_unit` |
 | `status` | MachineStatus | `IDLE` \| `BUSY` \| `UNDER_MAINTENANCE` \| `DECOMMISSIONED` |
 | `current_batch_id` | string? | FK → `ProductionBatch` (null when IDLE) |
 | `linked_asset_id` | string? | FK → `Asset` (Supply Chain domain) — Populated when this machine was procured via PR → PurO → GR. `null` for pre-existing or manually registered machines. |
@@ -100,25 +100,25 @@ A staff member working at a node, relevant to production labor costing.
 ## Layer 2 — Item Config
 
 ### ItemCapacityConfig
-Links an **Item** to a **StationType** and defines how much machine capacity one base unit of that item consumes, and whether it tolerates batch mixing.
+Links an **Item** to a **EquipmentType** and defines how much machine capacity one base unit of that item consumes, and whether it tolerates batch mixing.
 
 | Field | Type | Description |
 |---|---|---|
 | `item_id` | string | FK → `Item` |
-| `station_type_id` | string | FK → `StationType` |
+| `equipment_type_id` | string | FK → `EquipmentType` |
 | `slot_consumption` | float64 | Capacity units consumed per 1 base unit of the item |
 | `allow_mix` | bool | If `false`, this item requires exclusive machine use during its cycle |
 
 **Example:**
 
-| Item | StationType | slot_consumption | allow_mix |
+| Item | EquipmentType | slot_consumption | allow_mix |
 |---|---|---|---|
 | Burger bun | OVEN | 1 (slot) | true |
 | Egg | FRYER | 1 (liter) | false |
 | Potato portion | FRYER | 2 (liters) | false |
 
 **Rules:**
-- An item may have configs for multiple station types (e.g., an item that can be grilled or fried).
+- An item may have configs for multiple equipment types (e.g., an item that can be grilled or fried).
 - This record is the input to the bin-packing algorithm.
 
 ---
@@ -132,7 +132,7 @@ The base entity for all physical goods in the system.
 |---|---|---|
 | `id` | string | Unique identifier |
 | `name` | string | Display name |
-| `type` | ItemType | `PRODUCT` \| `SEMI_PRODUCT` \| `RAW_MATERIAL` \| `ASSET_SUPPLY` |
+| `type` | ItemType | `PRODUCT` \| `SEMI_PRODUCT` \| `RAW_MATERIAL` |
 | `base_unit` | string | The smallest consumable unit (e.g., `piece`, `ml`, `gram`) |
 | `sku` | string | Stock-keeping unit code |
 
@@ -195,11 +195,11 @@ An individual step in a SOP.
 |---|---|---|
 | `sop_id` | string | FK → `SOP` |
 | `seq_no` | int | Sequence number (execution order) |
-| `station_type_id` | string | FK → `StationType` — machine category required for this step |
+| `equipment_type_id` | string | FK → `EquipmentType` — machine category required for this step |
 | `duration` | int | Estimated duration in seconds |
 | `description` | string | Human-readable instruction |
 
-**Key field:** `station_type_id` is what drives the queue allocation — when a Production Order is decomposed into tasks, each task's required station type comes from this field.
+**Key field:** `equipment_type_id` is what drives the queue allocation — when a Production Order is decomposed into tasks, each task's required equipment type comes from this field.
 
 ---
 
@@ -358,14 +358,14 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
   └── If IN_PROGRESS: PO decomposed into Tasks (one per SOPStep)
         │
         ▼
-[Tasks enter Priority Queue by StationType]
+[Tasks enter Priority Queue by EquipmentType]
         │
         ▼
 [Machine transitions to IDLE]
         │
         ▼
 [Bin-Packing: Greedy fill]
-  ├── Filter by station_type_id
+  ├── Filter by equipment_type_id
   ├── Respect allow_mix constraint
   └── Pack until max_slots reached
         │
@@ -400,14 +400,14 @@ An audit trail record for any manual correction to a finalized `POCostRecord`.
 | Model | Depends On |
 |---|---|
 | `Node` | `Organization` |
-| `Machine` | `Node`, `StationType`, `Asset`? (Supply Chain — optional provenance) |
+| `Machine` | `Node`, `EquipmentType`, `Asset`? (Supply Chain — optional provenance) |
 | `Staff` | `Node` |
-| `ItemCapacityConfig` | `Item`, `StationType` |
+| `ItemCapacityConfig` | `Item`, `EquipmentType` |
 | `UoM` | `Item` |
 | `BOM` | `Item` (output) |
 | `BOMLine` | `BOM`, `Item` (component) |
 | `SOP` | `BOM` |
-| `SOPStep` | `SOP`, `StationType` |
+| `SOPStep` | `SOP`, `EquipmentType` |
 | `ProductionOrder` | `BOM`, `SOP`, `Node` |
 | `BOMSnapshot` | `ProductionOrder`, `BOM` |
 | `POStaffAssignment` | `ProductionOrder`, `Staff` |

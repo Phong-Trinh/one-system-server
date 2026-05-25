@@ -125,17 +125,23 @@ When `requester_node_id.site_id == provider_node_id.site_id`, the ITO executes i
 ## 4. External Procurement
 
 ### PurchaseRequisition (PR)
-**Scope: CapEx only.** Used for long-term assets (equipment, tools) or exceptional one-off purchases. Routine OpEx replenishment does NOT use PR — it goes directly to an auto-draft `PurchaseOrder`.
+**Scope:** Used for long-term CapEx assets (equipment, tools) or exceptional one-off OpEx purchases. Routine OpEx replenishment does NOT use PR — it goes directly to an auto-draft `PurchaseOrder`.
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | string | Unique identifier |
 | `requester_node_id` | string | FK → `Node` (Store or Factory submitting the request) |
-| `item_name` | string | Name of the requested asset/equipment |
-| `estimated_cost` | float64 | Expected cost |
 | `justification` | string | Reason for request (e.g., "Old fryer broken, needs replacement") |
 | `status` | PRStatus | `PENDING_HQ_APPROVAL` → `APPROVED` → `REJECTED` |
 | `linked_puro_id` | string? | FK → `PurchaseOrder` — Populated once HQ converts the approved PR into a PurO |
+| `lines` | []PRLine | Line items for the request (see below) |
+
+**PRLine:**
+| Field | Type | Description |
+|---|---|---|
+| `item_id` | string? | FK → `Item` (populated for OpEx exceptional requests) |
+| `equipment_type_id` | string? | FK → `EquipmentType` (populated for CapEx equipment/assets). Staff could create this for new kind of equipment not existing in the system. |
+| `estimated_cost` | float64 | Expected cost |
 
 ---
 
@@ -151,7 +157,7 @@ The official external order sent to a Supplier. **Exclusively created by HQ.** G
 | `destination_node_id` | string | FK → `Node` — Where the supplier must deliver (Factory or Store). **Never HQ.** |
 | `linked_pr_id` | string? | FK → `PurchaseRequisition` — Populated only when `trigger_type = PR_TRIGGERED` |
 | `linked_config_ref_id` | string? | FK → `NodeItemConfig` — Populated only when `trigger_type = AUTO_DRAFT`; identifies the ROP config that triggered this order |
-| `items` | []PurOLineItem | Line items: `item_id`, `qty_ordered` (Packaging Units), `unit_price` |
+| `items` | []PurOLineItem | Line items: `item_id` (optional for CapEx), `equipment_type_id` (optional), `qty_ordered` (Packaging Units), `unit_price` |
 | `total_amount` | float64 | Total value of order |
 | `status` | PurOStatus | See status flow below |
 
@@ -171,7 +177,7 @@ The official external order sent to a Supplier. **Exclusively created by HQ.** G
 | Step | Transition | Actor | Fields Set / Action |
 |---|---|---|---|
 | 1 | *(PR approved)* | HQ | `PR.status = APPROVED` |
-| 2 | → `ISSUED` | HQ | Sets all fields at creation: `id`, `trigger_type=PR_TRIGGERED`, `creator_node_id`, `supplier_id`, `destination_node_id` *(= PR.requester_node_id)*, `linked_pr_id`, `items[].item_id`, `items[].qty_ordered`, `items[].unit_price`, `total_amount`. Also sets `PR.linked_puro_id = PurO.id`. **Price attached at creation** (HQ already has supplier quote from PR review). Skips `DRAFT`. |
+| 2 | → `ISSUED` | HQ | Sets all fields at creation: `id`, `trigger_type=PR_TRIGGERED`, `creator_node_id`, `supplier_id`, `destination_node_id` *(= PR.requester_node_id)*, `linked_pr_id`, `items[].equipment_type_id` (or `items[].item_id`), `items[].qty_ordered`, `items[].unit_price`, `total_amount`. Also sets `PR.linked_puro_id = PurO.id`. **Price attached at creation** (HQ already has supplier quote from PR review). Skips `DRAFT`. |
 | 3 | `ISSUED` → `IN_TRANSIT` | HQ / Supplier | No new PurO fields set. |
 | 4 | `IN_TRANSIT` → `DELIVERED` | Store / Factory | Destination node creates `GoodsReceipt` (`source_ref_id = PurO.id`, `qty_received`). |
 | 5 | `DELIVERED` → `PAYMENT_SETTLED` | HQ | 3-Way Matching validated. Payment authorized. → Triggers `Asset` creation (see §5.3). |
@@ -223,7 +229,7 @@ The financial and administrative record of a CapEx equipment item, registered af
 | Field | Type | Description |
 |---|---|---|
 | `id` | string | Unique identifier |
-| `name` | string | Equipment name — copied from `PR.item_name` |
+| `equipment_type_id` | string | FK → `EquipmentType` — copied from `PR.equipment_type_id` |
 | `node_id` | string | FK → `Node` — Where the asset is physically located and used |
 | `linked_pr_id` | string | FK → `PurchaseRequisition` — The original request |
 | `linked_puro_id` | string | FK → `PurchaseOrder` — The order that procured it |
@@ -253,14 +259,14 @@ IN_USE                →  UNDER_MAINTENANCE  →  IN_USE
 
 | Step | Actor | Action | Fields Written |
 |---|---|---|---|
-| 1 | Store / Factory Manager | Submits `PurchaseRequisition` | `requester_node_id`, `item_name`, `estimated_cost`, `justification`; `PR.status = PENDING_HQ_APPROVAL` |
+| 1 | Store / Factory Manager | Submits `PurchaseRequisition` | `requester_node_id`, `equipment_type_id`, `estimated_cost`, `justification`; `PR.status = PENDING_HQ_APPROVAL` |
 | 2 | HQ | Approves PR | `PR.status = APPROVED` |
 | 3 | HQ | Creates `PurchaseOrder` from PR | `trigger_type=PR_TRIGGERED`, `supplier_id`, `destination_node_id`, `linked_pr_id`, `items[]`, `unit_price`, `total_amount`; `PR.linked_puro_id = PurO.id`; `PurO.status = ISSUED` |
 | 4 | Supplier | Ships goods to destination node | `PurO.status = IN_TRANSIT` |
 | 5 | Store / Factory | Creates `GoodsReceipt` | `source_ref_type=PURCHASE_ORDER`, `source_ref_id=PurO.id`, `receiver_node_id`, `qty_received`; `PurO.status = DELIVERED` |
 | 6 | HQ | 3-Way Matching → settles payment | `PurO.status = PAYMENT_SETTLED` |
-| 7 | System | **Auto-creates `Asset` record** | `name=PR.item_name`, `node_id=PR.requester_node_id`, `linked_pr_id`, `linked_puro_id`, `linked_gr_id`, `acquisition_cost=PurO.total_amount`, `acquisition_date=GR.confirmed_at`; `Asset.status = PENDING_REGISTRATION`; `Asset.linked_machine_id = null` |
-| 8 | Store / Factory | **Creates `Machine` record** for the node | `Machine.id` (e.g. `M_FRYER_03`), `Machine.station_type_id` (e.g. `FRYER`), `Machine.node_id = Asset.node_id`, `Machine.max_slots`, `Machine.status = IDLE`, `Machine.linked_asset_id = Asset.id` |
+| 7 | System | **Auto-creates `Asset` record** | `equipment_type_id=PR.equipment_type_id`, `node_id=PR.requester_node_id`, `linked_pr_id`, `linked_puro_id`, `linked_gr_id`, `acquisition_cost=PurO.total_amount`, `acquisition_date=GR.confirmed_at`; `Asset.status = PENDING_REGISTRATION`; `Asset.linked_machine_id = null` |
+| 8 | Store / Factory | **Creates `Machine` record** for the node | `Machine.id` (e.g. `M_FRYER_03`), `Machine.equipment_type_id` (e.g. `FRYER`), `Machine.node_id = Asset.node_id`, `Machine.max_slots`, `Machine.status = IDLE`, `Machine.linked_asset_id = Asset.id` |
 | 9 | System | **Links Asset ↔ Machine** | `Asset.linked_machine_id = Machine.id`; `Asset.status = IN_USE` |
 
 ---

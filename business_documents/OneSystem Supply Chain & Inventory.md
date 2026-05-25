@@ -217,4 +217,3 @@ OneSystem maintains a live **`NodeStock`** record for every (item, node) pair. T
 | # | Question | Status | Owner |
 |---|---|---|---|
 | 1 | What is the exact workflow for resolving a `DiscrepancyTicket` with third-party logistics providers (e.g., Lalamove/Ahamove)? | ⏳ Open | Business Owner |
-| 2 | For `EXTERNAL_PROCUREMENT` items at a Store, should the system auto-generate a Draft PurO on the HQ Dashboard (same as Factory), or require the Store Manager to manually submit a PR each time? | ✅ Resolved: System auto-generates Draft PurO for all nodes. PR is reserved for CapEx only. | — |
