@@ -6,12 +6,12 @@ import (
 	"one-system-server/internal/domain/models"
 )
 
-// StationTypeRepository defines persistence operations for StationType.
-type StationTypeRepository interface {
-	Create(ctx context.Context, st *models.StationType) error
-	FindByID(ctx context.Context, id string) (*models.StationType, error)
-	FindAll(ctx context.Context) ([]*models.StationType, error)
-	Update(ctx context.Context, st *models.StationType) error
+// EquipmentTypeRepository defines persistence operations for EquipmentType.
+type EquipmentTypeRepository interface {
+	Create(ctx context.Context, st *models.EquipmentType) error
+	FindByID(ctx context.Context, id string) (*models.EquipmentType, error)
+	FindAll(ctx context.Context) ([]*models.EquipmentType, error)
+	Update(ctx context.Context, st *models.EquipmentType) error
 	Delete(ctx context.Context, id string) error
 }
 

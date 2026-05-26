@@ -55,10 +55,12 @@ type UoM struct {
 //	Egg         × FRYER → slot_consumption=1L,  allow_mix=false  (needs exclusive fryer cycle)
 //	Potato      × FRYER → slot_consumption=2L,  allow_mix=false  (needs exclusive fryer cycle)
 type ItemCapacityConfig struct {
-	ItemID        string `json:"item_id"`         // FK → Item
-	StationTypeID string `json:"station_type_id"` // FK → StationType
+	ItemID string `json:"item_id"` // FK → Item
+	// EquipmentTypeID is the FK to the EquipmentType (e.g., "FRYER", "OVEN").
+	// Previously named StationTypeID — renamed to match the canonical EquipmentType model.
+	EquipmentTypeID string `json:"equipment_type_id"` // FK → EquipmentType
 	// SlotConsumption is the capacity units consumed per one base unit of the item.
-	// The unit corresponds to StationType.capacity_unit (e.g., slots, liters, trays).
+	// The unit corresponds to EquipmentType.capacity_unit (e.g., slots, liters, trays).
 	SlotConsumption float64 `json:"slot_consumption"`
 	// AllowMix controls whether this item may share a machine batch with other item types.
 	// If false, the item requires exclusive machine use for its entire cook cycle.

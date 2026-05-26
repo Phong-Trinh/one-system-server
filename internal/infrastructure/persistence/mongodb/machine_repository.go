@@ -17,39 +17,38 @@ const collMachines = "machines"
 // ── BSON document ─────────────────────────────────────────────────────────────
 
 type machineDoc struct {
-	ID                   string                   `bson:"_id"`
-	StationTypeID        string                   `bson:"station_type_id"`
-	NodeID               string                   `bson:"node_id"`
-	MaxCapacity          float64                  `bson:"max_capacity"`
-	AllocationStrategy   models.AllocationStrategy `bson:"allocation_strategy"`
-	Status               models.MachineStatus     `bson:"status"`
-	CurrentBatchID       *string                  `bson:"current_batch_id,omitempty"`
+	ID              string               `bson:"_id"`
+	EquipmentTypeID string               `bson:"equipment_type_id"`
+	NodeID          string               `bson:"node_id"`
+	MaxCapacity     float64              `bson:"max_capacity"`
+	Status          models.MachineStatus `bson:"status"`
+	CurrentBatchID  *string              `bson:"current_batch_id,omitempty"`
+	LinkedAssetID   *string              `bson:"linked_asset_id,omitempty"`
 }
 
 func machineToDoc(m *models.Machine) *machineDoc {
 	return &machineDoc{
-		ID:                   m.ID,
-		StationTypeID:        m.StationTypeID,
-		NodeID:               m.NodeID,
-		MaxCapacity:          m.MaxCapacity,
-		AllocationStrategy:   m.AllocationStrategy,
-		Status:               m.Status,
-		CurrentBatchID:       m.CurrentBatchID,
+		ID:              m.ID,
+		EquipmentTypeID: m.EquipmentTypeID,
+		NodeID:          m.NodeID,
+		MaxCapacity:     m.MaxCapacity,
+		Status:          m.Status,
+		CurrentBatchID:  m.CurrentBatchID,
+		LinkedAssetID:   m.LinkedAssetID,
 	}
 }
 
 func docToMachine(d *machineDoc) *models.Machine {
 	return &models.Machine{
-		ID:                   d.ID,
-		StationTypeID:        d.StationTypeID,
-		NodeID:               d.NodeID,
-		MaxCapacity:          d.MaxCapacity,
-		AllocationStrategy:   d.AllocationStrategy,
-		Status:               d.Status,
-		CurrentBatchID:       d.CurrentBatchID,
+		ID:              d.ID,
+		EquipmentTypeID: d.EquipmentTypeID,
+		NodeID:          d.NodeID,
+		MaxCapacity:     d.MaxCapacity,
+		Status:          d.Status,
+		CurrentBatchID:  d.CurrentBatchID,
+		LinkedAssetID:   d.LinkedAssetID,
 	}
 }
-
 
 // ── Repository ────────────────────────────────────────────────────────────────
 
@@ -60,11 +59,10 @@ type machineRepository struct {
 // NewMachineRepository returns a services.MachineRepository backed by MongoDB.
 func NewMachineRepository(client *Client, dbName string) services.MachineRepository {
 	col := client.DB(dbName).Collection(collMachines)
-	// Compound index: used by bin-packing allocation engine
 	_, _ = col.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{
 			{Key: "node_id", Value: 1},
-			{Key: "station_type_id", Value: 1},
+			{Key: "equipment_type_id", Value: 1},
 			{Key: "status", Value: 1},
 		},
 	})
@@ -100,12 +98,14 @@ func (r *machineRepository) FindByNodeID(ctx context.Context, nodeID string) ([]
 	return decodeMachines(ctx, cur)
 }
 
-// FindIdleByStationType supports the bin-packing allocation engine (Layer 5).
-func (r *machineRepository) FindIdleByStationType(ctx context.Context, nodeID, stationTypeID string) ([]*models.Machine, error) {
+// FindIdleByStationType returns idle machines of a given equipment type.
+// Renamed to FindIdleByStationType to satisfy the MachineRepository interface (backward compat);
+// internally queries by equipment_type_id.
+func (r *machineRepository) FindIdleByStationType(ctx context.Context, nodeID, equipmentTypeID string) ([]*models.Machine, error) {
 	filter := bson.M{
-		"node_id":         nodeID,
-		"station_type_id": stationTypeID,
-		"status":          models.MachineIdle,
+		"node_id":           nodeID,
+		"equipment_type_id": equipmentTypeID,
+		"status":            models.MachineIdle,
 	}
 	cur, err := r.col.Find(ctx, filter)
 	if err != nil {
@@ -163,14 +163,5 @@ func (r *machineRepository) FindAll(ctx context.Context) ([]*models.Machine, err
 		return nil, fmt.Errorf("machineRepository.FindAll: %w", err)
 	}
 	defer cur.Close(ctx)
-
-	var machines []*models.Machine
-	for cur.Next(ctx) {
-		var doc machineDoc
-		if err := cur.Decode(&doc); err != nil {
-			return nil, err
-		}
-		machines = append(machines, docToMachine(&doc))
-	}
-	return machines, cur.Err()
+	return decodeMachines(ctx, cur)
 }

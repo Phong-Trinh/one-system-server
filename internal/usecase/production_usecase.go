@@ -124,7 +124,7 @@ func (uc *productionUseCase) CreateProductionOrder(ctx context.Context, bomID, n
 	snap := &models.BOMSnapshot{
 		POID:             po.ID,
 		LockedBOMVersion: bom.Version,
-		SnapshotData:     string(jsonData),
+		SnapshotData:     jsonData,
 	}
 
 	if err := uc.poRepo.SaveSnapshot(ctx, snap); err != nil {

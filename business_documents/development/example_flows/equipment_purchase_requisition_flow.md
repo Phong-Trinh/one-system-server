@@ -1,47 +1,68 @@
 #####################
 
- Ví dụ: S1 muốn mua thêm một bếp nướng (CapEx Equipment → luôn dùng PR)
+ Ví dụ: Quy trình mua sắm thiết bị tài sản (CapEx Procurement Flow) cho lò nướng Pizza mới (từ PR tới Machine)
 
 Bối cảnh:
-- S1 đang vận hành bình thường, nhưng quản lý cửa hàng nhận ra lượng đơn nướng tăng cao vào cuối tuần,
-  bếp nướng hiện tại không đủ công suất → quyết định đề xuất mua thêm 1 bếp nướng điện.
-- Đây là CapEx (tài sản dài hạn) → KHÔNG dùng RO, phải dùng PR.
+- Store S1 muốn bổ sung một lò nướng Pizza Công nghiệp (Industrial Pizza Oven) để bán Pizza cuối tuần.
+- Đây là thiết bị mới chưa từng đăng ký trong hệ thống catalog của chuỗi.
+- Lò nướng này là tài sản dài hạn (CapEx) nên bắt buộc phải tạo Purchase Requisition (PR) gửi lên HQ phê duyệt chứ không qua hệ thống RO châm hàng tự động.
 
-Flow:
+Quy trình các bước (List System Steps):
 
-  [1] S1 Manager tạo S.PR trên hệ thống
-        - Loại: Equipment (CapEx)
-        - Item: Bếp nướng điện công nghiệp
-        - Số lượng: 1
-        - Lý do: Công suất nướng hiện tại không đáp ứng demand cuối tuần
-        - Estimated cost: 8,500,000 VND
-        - Gửi lên: HQ
+  [1] Store Manager gửi yêu cầu PR cho lò nướng Pizza mới.
+        - Tên thiết bị đề xuất: "Industrial Pizza Oven"
+        - Expected capacity: 2.0 (capacity_unit là "tray")
+        - Estimated price: 3,000 USD
+        - UX Optimization: Store Manager nhập tên thiết bị, hệ thống tự động sinh ID kỹ thuật `eq_pizza_oven` ở background.
 
-  [2] HQ nhận PR → review CapEx
-        - HQ xem xét: ngân sách CapEx quý, ROI dự kiến, mức độ ưu tiên
-        - Có thể: yêu cầu bổ sung thông tin (báo giá 2-3 nhà cung cấp), hoặc approve/reject
-        - Kết quả: HQ APPROVED PR-S1-0042
+  [2] Hệ thống tạo danh mục DRAFT cho thiết bị mới.
+        - Vì `eq_pizza_oven` chưa có trong catalog hệ thống, hệ thống tự động thêm mới EquipmentType này với trạng thái `DRAFT`.
+        - PR được gửi lên HQ với trạng thái `PENDING_HQ_APPROVAL`.
 
-  [3] HQ tìm supplier, đàm phán, tạo HQ.PurO
-        - HQ liên hệ 2-3 nhà cung cấp thiết bị bếp
-        - Chọn supplier: Bếp Việt Co. — giá 8,200,000 VND (tốt hơn estimate của S1)
-        - HQ tạo HQ.PurO → gửi đến Bếp Việt Co.
-        - Delivery point: S1 (giao thẳng đến cửa hàng)
+  [3] HQ xem xét PR và phê duyệt (Approve PR).
+        - Admin HQ bấm phê duyệt PR.
+        - Trạng thái PR chuyển thành `APPROVED`.
+        - Hệ thống tự động kích hoạt EquipmentType `eq_pizza_oven` từ trạng thái `DRAFT` chuyển sang `ACTIVE` trên toàn chuỗi.
 
-  [4] Supplier giao hàng đến S1
-        - Bếp Việt Co. giao bếp nướng đến S1
-        - S1 staff xác nhận nhận hàng → tạo Goods Receipt (GR) trên hệ thống
-        - GR linked to HQ.PurO
+  [4] HQ đặt hàng lần 1 từ Supplier A.
+        - HQ chọn Supplier A (Lousy Logistics) và tạo đơn mua hàng **`PurchaseOrder` (PurO #1)** liên kết với PR của S1.
+        - Giá thương lượng: 2,900 USD.
+        - Trạng thái PurO #1 tự động là `CONFIRMED`.
 
-  [5] 3-Way Matching tại HQ
-        - HQ kiểm tra: Invoice (từ Bếp Việt Co.) + GR (S1 xác nhận) + HQ.PurO
-        - Nếu khớp → HQ approve thanh toán cho supplier
-        - Nếu lệch (sai số lượng, giá, item) → hold lại, yêu cầu giải trình
+  [5] Supplier A giao hàng nhưng bị hỏng hoàn toàn tại Store.
+        - Supplier A vận chuyển hàng (PurO chuyển trạng thái `SHIPPED`).
+        - Xe giao tới S1. Store Manager mở thùng kiểm tra phát hiện lò bị hỏng hoàn toàn.
+        - Store Manager tạo phiếu nhận hàng **`GoodsReceipt` (GR #1)** ghi nhận số lượng thực tế nhận được là **0**.
+        - Hệ thống chuyển trạng thái GR #1 sang `DISCREPANCY`, đồng thời tự động sinh một **`DiscrepancyTicket`** trạng thái `OPEN` để báo cáo HQ. Tài sản bị khóa không được đưa vào bếp.
 
-  [6] Ghi nhận tài sản
-        - Bếp nướng được ghi nhận vào danh sách tài sản (Equipment Register) của S1
-        - Hạch toán: Tài sản cố định → khấu hao dần theo vòng đời thiết bị (ví dụ: 3 năm)
-        - KHÔNG ghi nhận toàn bộ vào chi phí ngay trong kỳ (khác với OpEx)
+  [6] HQ hủy đơn Supplier A và Reset PR để pivot sang Supplier B.
+        - Nhận thấy lỗi từ Supplier A, HQ chuyển trạng thái PurO #1 thành `CANCELLED`.
+        - Hệ thống tự động khôi phục trạng thái PR ban đầu của S1 về lại `APPROVED` để tiếp tục chuyển đổi nhà cung cấp.
 
-Tóm tắt flow:
-  S.PR (S1 tạo) → HQ review & approve → HQ.PurO (tới supplier) → GR tại S1 → 3-way matching → thanh toán → Equipment Register
+  [7] HQ đặt hàng lần 2 từ Supplier B.
+        - HQ tạo đơn mua hàng mới **`PurchaseOrder` (PurO #2)** liên kết với PR đó gửi đến Supplier B (Premium Logistics).
+        - Giá mua: 2,900 USD.
+
+  [8] Supplier B giao hàng thành công.
+        - Supplier B giao lò nướng Pizza nguyên vẹn tới S1.
+        - Store Manager kiểm nhận, tạo phiếu **`GoodsReceipt` (GR #2)** với số lượng nhận thực tế là **1**.
+        - Trạng thái GR #2 chuyển thành `CONFIRMED`.
+
+  [9] HQ đối soát tài chính 3 bên (3-Way Matching).
+        - Supplier B gửi hóa đơn (Supplier Invoice) trị giá 2,900 USD cho HQ.
+        - Kế toán HQ kích hoạt đối soát 3 bên: PurO #2 (2,900 USD) = GR #2 (1 chiếc lò) = Invoice (2,900 USD).
+        - Đối soát khớp 100%, trạng thái Invoice chuyển thành `MATCHED`, PurO #2 chuyển thành `COMPLETED`.
+
+  [10] Hệ thống ghi nhận Sổ cái và sinh tài sản.
+        - Hệ thống tự động ghi nhận một giao dịch chi phí **`Expense Transaction`** trị giá 2,900 USD tại chi nhánh S1 trên General Ledger.
+        - Hệ thống tự động tạo bản ghi tài sản **`Asset`** tương ứng ở trạng thái `PENDING_REGISTRATION`.
+
+  [11] Đăng ký lò Pizza đưa vào bếp vận hành.
+        - Store Manager tiến hành đăng ký lò nướng Pizza vào bếp với mã thiết bị **`Machine ID: M_PIZZA_OVEN_01`** (max_capacity = 2.0).
+        - Trạng thái bản ghi `Asset` chuyển thành `IN_USE`.
+        - Lò nướng Pizza trên Kitchen KDS chuyển sang trạng thái **`IDLE`** (sẵn sàng phân phối order làm bánh).
+
+  [12] Đồng bộ trạng thái khi bảo trì (Maintenance Sync).
+        - Thiết bị gặp sự cố, Quản lý Store set trạng thái Asset thành `UNDER_MAINTENANCE`.
+        - Hệ thống bếp tự động đồng bộ trạng thái của lò Pizza `M_PIZZA_OVEN_01` sang **`UNDER_MAINTENANCE`** (ngưng nhận order làm bánh).
+        - Sau khi sửa chữa xong, Quản lý set Asset thành `IN_USE`, trạng thái lò Pizza tự động đồng bộ về lại **`IDLE`** (tiếp tục nhận order làm bánh).

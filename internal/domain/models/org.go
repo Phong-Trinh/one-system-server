@@ -36,11 +36,19 @@ type Node struct {
 
 // ─── Station / Machine ────────────────────────────────────────────────────────
 
+type EquipmentTypeStatus string
+
+const (
+	EquipmentTypeActive EquipmentTypeStatus = "ACTIVE"
+	EquipmentTypeDraft  EquipmentTypeStatus = "DRAFT"
+)
+
 // EquipmentType defines a category of kitchen equipment (e.g., FRYER, OVEN, GRILL).
 type EquipmentType struct {
-	ID           string `json:"id"`            // Enum-style key: "FRYER", "OVEN", "GRILL", etc.
-	Name         string `json:"name"`          // Human-readable display label
-	CapacityUnit string `json:"capacity_unit"` // Unit of capacity measurement: "slots", "liters", "trays", etc.
+	ID           string              `json:"id"`            // Enum-style key: "FRYER", "OVEN", "GRILL", etc.
+	Name         string              `json:"name"`          // Human-readable display label
+	CapacityUnit string              `json:"capacity_unit"` // Unit of capacity measurement: "slots", "liters", "trays", etc.
+	Status       EquipmentTypeStatus `json:"status"`        // Status: ACTIVE or DRAFT
 }
 
 // MachineStatus represents the lifecycle state of a physical machine.

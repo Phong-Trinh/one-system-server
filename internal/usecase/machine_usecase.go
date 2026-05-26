@@ -26,18 +26,18 @@ type MachineUseCase interface {
 type machineUseCase struct {
 	machineRepo     services.MachineRepository
 	nodeRepo        services.NodeRepository
-	stationTypeRepo services.StationTypeRepository
+	equipTypeRepo   services.EquipmentTypeRepository
 }
 
 func NewMachineUseCase(
 	machineRepo services.MachineRepository,
 	nodeRepo services.NodeRepository,
-	stationTypeRepo services.StationTypeRepository,
+	equipTypeRepo services.EquipmentTypeRepository,
 ) MachineUseCase {
 	return &machineUseCase{
-		machineRepo:     machineRepo,
-		nodeRepo:        nodeRepo,
-		stationTypeRepo: stationTypeRepo,
+		machineRepo:   machineRepo,
+		nodeRepo:      nodeRepo,
+		equipTypeRepo: equipTypeRepo,
 	}
 }
 
@@ -53,18 +53,18 @@ func (uc *machineUseCase) Create(ctx context.Context, nodeID, stationTypeID stri
 	if node == nil {
 		return nil, fmt.Errorf("node %q not found", nodeID)
 	}
-	// Validate station type exists
-	st, err := uc.stationTypeRepo.FindByID(ctx, stationTypeID)
+	// Validate equipment type exists
+	st, err := uc.equipTypeRepo.FindByID(ctx, stationTypeID)
 	if err != nil {
 		return nil, err
 	}
 	if st == nil {
-		return nil, fmt.Errorf("station type %q not found", stationTypeID)
+		return nil, fmt.Errorf("equipment type %q not found", stationTypeID)
 	}
 
 	m := &models.Machine{
-		ID:            uuid.NewString(),
-		StationTypeID: stationTypeID,
+		ID:              uuid.NewString(),
+		EquipmentTypeID: stationTypeID,
 		NodeID:        nodeID,
 		MaxCapacity:   maxCapacity,
 		Status:        models.MachineIdle,

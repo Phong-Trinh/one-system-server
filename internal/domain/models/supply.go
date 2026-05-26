@@ -100,8 +100,8 @@ const (
 	PRApproved PRStatus = "APPROVED"
 	// PRRejected — HQ rejected the request.
 	PRRejected PRStatus = "REJECTED"
-	// PRConvertedToPO — HQ has issued a PurchaseOrder from this PR.
-	PRConvertedToPO PRStatus = "CONVERTED_TO_PO"
+	// PRConvertedToPurO — HQ has issued a PurchaseOrder from this PR.
+	PRConvertedToPurO PRStatus = "CONVERTED_TO_PURO"
 )
 
 // PurchaseRequisition is a formal request submitted by a Store or Factory Manager to HQ
@@ -131,14 +131,17 @@ type PurchaseRequisition struct {
 
 // PRLine is a single item line within a PurchaseRequisition.
 type PRLine struct {
-	ID                 string  `json:"id"`
-	PRID               string  `json:"pr_id"`             // FK → PurchaseRequisition
-	ItemID             *string `json:"item_id,omitempty"` // FK → Item (populated for OpEx exceptional requests)
-	EquipmentTypeID    *string `json:"equipment_type_id,omitempty"` // FK → EquipmentType (populated for CapEx equipment/assets)
-	Qty                float64 `json:"qty"`
-	UnitOfMeasure      string  `json:"unit_of_measure"`      // e.g., "unit", "set"
-	EstimatedUnitPrice float64 `json:"estimated_unit_price"` // Requester's cost estimate
-	Justification      string  `json:"justification"`        // Per-line rationale
+	ID                    string   `json:"id"`
+	PRID                  string   `json:"pr_id"`             // FK → PurchaseRequisition
+	ItemID                *string  `json:"item_id,omitempty"` // FK → Item (populated for OpEx exceptional requests)
+	EquipmentTypeID       *string  `json:"equipment_type_id,omitempty"` // FK → EquipmentType (populated for CapEx equipment/assets)
+	ProposedEquipmentName *string  `json:"proposed_equipment_name,omitempty"`  // Set if requesting a new unregistered equipment type
+	ProposedCapacityUnit  *string  `json:"proposed_capacity_unit,omitempty"`   // Set if requesting a new unregistered equipment type
+	ExpectedCapacity      *float64 `json:"expected_capacity,omitempty"`        // Expected capacity of the machine to buy (independent of the type itself)
+	Qty                   float64  `json:"qty"`
+	UnitOfMeasure         string   `json:"unit_of_measure"`      // e.g., "unit", "set"
+	EstimatedUnitPrice    float64  `json:"estimated_unit_price"` // Requester's cost estimate
+	Justification         string   `json:"justification"`        // Per-line rationale
 }
 
 // ─── §1.3 Purchase Order (HQ.PurO) ───────────────────────────────────────────
@@ -159,15 +162,15 @@ const (
 	PurchaseOrderCancelled PurchaseOrderStatus = "CANCELLED"
 )
 
-// POTriggerType identifies how the PurchaseOrder was initiated.
-type POTriggerType string
+// PurOTriggerType identifies how the PurchaseOrder was initiated.
+type PurOTriggerType string
 
 const (
-	// POTriggerPR — HQ converted an approved PurchaseRequisition into this PO.
-	POTriggerPR POTriggerType = "PR_TRIGGERED"
-	// POTriggerAutoDraft — system auto-generated this PO when a node with
+	// PurOTriggerPR — HQ converted an approved PurchaseRequisition into this PO.
+	PurOTriggerPR PurOTriggerType = "PR_TRIGGERED"
+	// PurOTriggerAutoDraft — system auto-generated this PO when a node with
 	// sourcing_strategy=EXTERNAL_PROCUREMENT hit its ROP.
-	POTriggerAutoDraft POTriggerType = "AUTO_DRAFT"
+	PurOTriggerAutoDraft PurOTriggerType = "AUTO_DRAFT"
 )
 
 // PurchaseOrder is an external procurement order issued exclusively by HQ to a third-party supplier.
@@ -185,7 +188,7 @@ const (
 type PurchaseOrder struct {
 	ID               string              `json:"id"`
 	OrgID            string              `json:"org_id"`              // FK → Organization
-	TriggerType      POTriggerType       `json:"trigger_type"`        // PR_TRIGGERED | AUTO_DRAFT
+	TriggerType      PurOTriggerType     `json:"trigger_type"`        // PR_TRIGGERED | AUTO_DRAFT
 	PRID             *string             `json:"pr_id,omitempty"`     // FK → PurchaseRequisition (nil for AUTO_DRAFT)
 	HQNodeID         string              `json:"hq_node_id"`          // FK → Node (HQ — the issuing authority)
 	SupplierID       string              `json:"supplier_id"`         // FK → Supplier
@@ -201,7 +204,7 @@ type PurchaseOrder struct {
 // Quantities are in packaging units (ordered with supplier); converted to base units on GR.
 type PurchaseOrderLine struct {
 	ID         string  `json:"id"`
-	POID       string  `json:"po_id"`       // FK → PurchaseOrder
+	PurOID     string  `json:"puro_id"`     // FK → PurchaseOrder
 	ItemID     *string `json:"item_id,omitempty"` // FK → Item (nil for CapEx PR_TRIGGERED)
 	EquipmentTypeID *string `json:"equipment_type_id,omitempty"` // FK → EquipmentType (used for CapEx when ItemID is nil)
 	QtyOrdered float64 `json:"qty_ordered"` // Quantity in packaging units
@@ -386,4 +389,76 @@ type B2BSalesOrderLine struct {
 	ItemID     string  `json:"item_id"`     // FK → Item
 	QtyOrdered float64 `json:"qty_ordered"` // Quantity in base units
 	UnitPrice  float64 `json:"unit_price"`  // Negotiated wholesale price per base unit
+}
+
+// ─── Asset ────────────────────────────────────────────────────────────────────
+
+// AssetStatus represents the lifecycle of a CapEx asset record.
+// Status changes here are synchronized to the linked Machine in the Production domain.
+type AssetStatus string
+
+const (
+	// AssetPendingRegistration — Asset record created by system after payment settlement;
+	// the physical equipment has not yet been registered as a Machine in the production system.
+	AssetPendingRegistration AssetStatus = "PENDING_REGISTRATION"
+	// AssetInUse — Asset is linked to an active Machine (LinkedMachineID is set).
+	// Machine.Status = IDLE or BUSY at this point.
+	AssetInUse AssetStatus = "IN_USE"
+	// AssetUnderMaintenance — Asset is temporarily out of service.
+	// Synchronized to Machine.Status = UNDER_MAINTENANCE by the Asset lifecycle.
+	AssetUnderMaintenance AssetStatus = "UNDER_MAINTENANCE"
+	// AssetDecommissioned — Asset is permanently retired.
+	// Synchronized to Machine.Status = DECOMMISSIONED; machine excluded from bin-packing.
+	// A new PR cycle must begin for replacement equipment.
+	AssetDecommissioned AssetStatus = "DECOMMISSIONED"
+)
+
+// DepreciationMethod defines how the asset's book value is reduced over time.
+type DepreciationMethod string
+
+const (
+	DepreciationStraightLine     DepreciationMethod = "STRAIGHT_LINE"
+	DepreciationDecliningBalance DepreciationMethod = "DECLINING_BALANCE"
+)
+
+// Asset is the financial and administrative record of a CapEx equipment item.
+//
+// Lifecycle:
+//
+//	System auto-creates this record (status=PENDING_REGISTRATION) when HQ settles
+//	payment for a PR_TRIGGERED PurchaseOrder (Step 7 of the PR→Machine workflow).
+//
+//	The node manager then registers the physical equipment as a Machine in the
+//	production system, at which point:
+//	  - Asset.LinkedMachineID is set
+//	  - Asset.Status transitions PENDING_REGISTRATION → IN_USE
+//	  - Machine.Status is set to IDLE (available for batch allocation)
+//
+// Rules:
+//   - Only PR_TRIGGERED POs result in an Asset record.
+//     AUTO_DRAFT POs procure inventory items (OpEx) — not assets.
+//   - When Asset.Status → UNDER_MAINTENANCE, Machine.Status is synchronized.
+//   - When Asset.Status → DECOMMISSIONED, Machine.Status = DECOMMISSIONED
+//     and the machine is permanently excluded from the batch allocation engine.
+type Asset struct {
+	ID              string     `json:"id"`
+	OrgID           string     `json:"org_id"`            // FK → Organization
+	EquipmentTypeID string     `json:"equipment_type_id"` // FK → EquipmentType (copied from PRLine)
+	NodeID          string     `json:"node_id"`           // FK → Node (physical location)
+	LinkedPRID      string     `json:"linked_pr_id"`      // FK → PurchaseRequisition (origin request)
+	LinkedPurOID    string     `json:"linked_puro_id"`    // FK → PurchaseOrder (procurement order)
+	LinkedGRID      string     `json:"linked_gr_id"`      // FK → GoodsReceipt (proof of delivery)
+	// LinkedMachineID is nil until the node manager registers the asset as a Machine.
+	// Set by AssetUseCase.RegisterAsMachine.
+	LinkedMachineID *string `json:"linked_machine_id,omitempty"` // FK → Machine (Production domain)
+
+	AcquisitionCost float64            `json:"acquisition_cost"` // Actual cost paid (from PO total)
+	AcquisitionDate time.Time          `json:"acquisition_date"` // Date GR was confirmed
+	Status          AssetStatus        `json:"status"`
+	Depreciation    DepreciationMethod `json:"depreciation_method"`
+	UsefulLifeYears int                `json:"useful_life_years"` // Used to compute depreciation schedule
+	CurrentBookValue float64           `json:"current_book_value"` // Decremented periodically by system
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -230,7 +231,7 @@ func (r *productionOrderRepository) GetSnapshot(ctx context.Context, poID string
 	return &models.BOMSnapshot{
 		POID:             doc.POID,
 		LockedBOMVersion: doc.LockedBOMVersion,
-		SnapshotData:     doc.SnapshotData,
+		SnapshotData:     json.RawMessage(doc.SnapshotData),
 	}, nil
 }
 

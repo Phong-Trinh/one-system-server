@@ -31,9 +31,10 @@ type sopStepDoc struct {
 	SOPID                string   `bson:"sop_id"`
 	SeqNo                int      `bson:"seq_no"`
 	DependsOn            []string `bson:"depends_on"`
-	StationTypeID        string   `bson:"station_type_id,omitempty"`
-	SlotConsumption      float64  `bson:"slot_consumption"`
-	AllowMix             bool     `bson:"allow_mix"`
+	// EquipmentTypeID links this step to an EquipmentType (e.g., "FRYER").
+	// Nil for manual/non-machine steps. SlotConsumption and AllowMix are
+	// now per (Item × EquipmentType) in ItemCapacityConfig, not on the step.
+	EquipmentTypeID      *string  `bson:"equipment_type_id,omitempty"`
 	IngredientBOMLineIDs []string `bson:"ingredient_bom_line_ids"`
 	Duration             int      `bson:"duration"`
 	Description          string   `bson:"description"`
@@ -53,9 +54,7 @@ func sopStepToDoc(s *models.SOPStep) *sopStepDoc {
 		SOPID:                s.SOPID,
 		SeqNo:                s.SeqNo,
 		DependsOn:            s.DependsOn,
-		StationTypeID:        s.StationTypeID,
-		SlotConsumption:      s.SlotConsumption,
-		AllowMix:             s.AllowMix,
+		EquipmentTypeID:      s.EquipmentTypeID,
 		IngredientBOMLineIDs: s.IngredientBOMLineIDs,
 		Duration:             s.Duration,
 		Description:          s.Description,
@@ -68,9 +67,7 @@ func docToSOPStep(d *sopStepDoc) *models.SOPStep {
 		SOPID:                d.SOPID,
 		SeqNo:                d.SeqNo,
 		DependsOn:            d.DependsOn,
-		StationTypeID:        d.StationTypeID,
-		SlotConsumption:      d.SlotConsumption,
-		AllowMix:             d.AllowMix,
+		EquipmentTypeID:      d.EquipmentTypeID,
 		IngredientBOMLineIDs: d.IngredientBOMLineIDs,
 		Duration:             d.Duration,
 		Description:          d.Description,

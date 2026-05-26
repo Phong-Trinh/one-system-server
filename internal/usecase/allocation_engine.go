@@ -24,8 +24,46 @@ type AllocationUseCase interface {
 	ConfirmCompletion(ctx context.Context, batchID string) error
 }
 
+// ── Implementation ────────────────────────────────────────────────────────────
+
+type allocationUseCase struct {
+	poRepo      services.ProductionOrderRepository
+	batchRepo   services.ProductionBatchRepository
+	machineRepo services.MachineRepository
+	sopRepo     services.SOPRepository
+	capRepo     services.ItemCapacityConfigRepository // bin-packing config: slot consumption + allow_mix
+}
+
+func NewAllocationUseCase(
+	poRepo services.ProductionOrderRepository,
+	batchRepo services.ProductionBatchRepository,
+	machineRepo services.MachineRepository,
+	sopRepo services.SOPRepository,
+	capRepo services.ItemCapacityConfigRepository,
+) AllocationUseCase {
+	return &allocationUseCase{
+		poRepo:      poRepo,
+		batchRepo:   batchRepo,
+		machineRepo: machineRepo,
+		sopRepo:     sopRepo,
+		capRepo:     capRepo,
+	}
+}
+
 // ── Private Helpers ───────────────────────────────────────────────────────────
 
+// getCapConfig returns the ItemCapacityConfig for (itemID, equipmentTypeID).
+// Returns nil when no config is found (non-machine step).
+func (uc *allocationUseCase) getCapConfig(ctx context.Context, itemID, equipmentTypeID string) (*models.ItemCapacityConfig, error) {
+	if itemID == "" || equipmentTypeID == "" {
+		return nil, nil
+	}
+	return uc.capRepo.Get(ctx, itemID, equipmentTypeID)
+}
+
+// createBatchForStep creates a QUEUED ProductionBatch for the given SOP step.
+// Slot consumption is derived from ItemCapacityConfig for the step's equipment type.
+// Steps with no equipment type (manual/non-machine) get slotsUsed=0.
 func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.ProductionOrder, stepID string) error {
 	step, err := uc.sopRepo.FindStepByID(ctx, stepID)
 	if err != nil || step == nil {
@@ -33,8 +71,14 @@ func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.
 	}
 
 	slotsUsed := 0.0
-	if step.StationTypeID != "" {
-		slotsUsed = po.TargetQty * step.SlotConsumption
+	if step.EquipmentTypeID != nil {
+		cfg, err := uc.getCapConfig(ctx, po.ItemID, *step.EquipmentTypeID)
+		if err != nil {
+			return fmt.Errorf("load cap config for item=%s equip=%s: %w", po.ItemID, *step.EquipmentTypeID, err)
+		}
+		if cfg != nil {
+			slotsUsed = po.TargetQty * cfg.SlotConsumption
+		}
 	}
 
 	batch := &models.ProductionBatch{
@@ -51,28 +95,7 @@ func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.
 	return uc.batchRepo.Create(ctx, batch)
 }
 
-// ── Implementation ────────────────────────────────────────────────────────────
-
-type allocationUseCase struct {
-	poRepo      services.ProductionOrderRepository
-	batchRepo   services.ProductionBatchRepository
-	machineRepo services.MachineRepository
-	sopRepo     services.SOPRepository
-}
-
-func NewAllocationUseCase(
-	poRepo services.ProductionOrderRepository,
-	batchRepo services.ProductionBatchRepository,
-	machineRepo services.MachineRepository,
-	sopRepo services.SOPRepository,
-) AllocationUseCase {
-	return &allocationUseCase{
-		poRepo:      poRepo,
-		batchRepo:   batchRepo,
-		machineRepo: machineRepo,
-		sopRepo:     sopRepo,
-	}
-}
+// ── DecomposePO ───────────────────────────────────────────────────────────────
 
 func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error {
 	po, err := uc.poRepo.FindByID(ctx, poID)
@@ -85,7 +108,7 @@ func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error
 		return err
 	}
 
-	// Find steps with no dependencies (entry points)
+	// Create batches for entry-point steps (no dependencies).
 	for _, step := range steps {
 		if len(step.DependsOn) == 0 {
 			if err := uc.createBatchForStep(ctx, po, step.ID); err != nil {
@@ -97,8 +120,10 @@ func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error
 	return uc.RunAllocation(ctx, po.NodeID)
 }
 
+// ── RunAllocation ─────────────────────────────────────────────────────────────
+
 func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) error {
-	// 1. Get all QUEUED batches for this node
+	// 1. Get all QUEUED batches for this node.
 	queued, err := uc.batchRepo.FindByNode(ctx, nodeID, []models.BatchStatus{models.BatchQueued})
 	if err != nil {
 		return err
@@ -107,15 +132,18 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 		return nil
 	}
 
-	// 2. Get all machines for this node
+	// 2. Get all machines for this node.
 	machines, err := uc.machineRepo.FindByNodeID(ctx, nodeID)
 	if err != nil {
 		return err
 	}
 
-	// 3. For each machine, try to allocate from the queue
+	// 3. For each machine, try to allocate from the queue.
 	for _, m := range machines {
-		// Calculate current load and check if any batch is already physically cooking
+		if m.Status == models.MachineUnderMaintenance || m.Status == models.MachineDecommissioned {
+			continue // Skip machines that are not available for production.
+		}
+
 		activeBatches, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
 
 		currentLoad := 0.0
@@ -132,23 +160,27 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 			}
 		}
 
-		// If machine is BATCH_SYNC and already has a batch in progress, it's locked until completion
-		if hasInProgress && m.AllocationStrategy == models.StrategySync {
+		// If machine already has a batch in progress, lock it until completion (BATCH_SYNC behaviour).
+		// Note: In the current model, all machines operate as BATCH_SYNC by default.
+		// A future AllocationStrategy field on Machine/EquipmentType can relax this.
+		if hasInProgress {
 			continue
 		}
 
-		// Collect active step descriptions/names for this machine to prioritize matching queued tasks
-		activeStepNames := make(map[string]bool)
+		// Build a set of active EquipmentType descriptions on this machine for mix-priority pass.
+		activeMixDescriptions := make(map[string]bool)
 		for _, ab := range activeBatches {
-			if step, err := uc.sopRepo.FindStepByID(ctx, ab.SOPStepID); err == nil && step != nil {
-				if step.AllowMix {
-					activeStepNames[step.Description] = true
+			abStep, _ := uc.sopRepo.FindStepByID(ctx, ab.SOPStepID)
+			if abStep != nil && abStep.EquipmentTypeID != nil {
+				abCfg, _ := uc.getCapConfig(ctx, ab.ItemID, *abStep.EquipmentTypeID)
+				if abCfg != nil && abCfg.AllowMix {
+					activeMixDescriptions[abStep.Description] = true
 				}
 			}
 		}
 
-		// 4. Try to find matching tasks in the queue for this machine
-		// We will evaluate matching active tasks first (Pass 1), and then other tasks (Pass 2)
+		// Two-pass allocation: prioritize batches matching currently active mix types (Pass 1),
+		// then evaluate remaining batches (Pass 2).
 		for pass := 1; pass <= 2; pass++ {
 			for i := 0; i < len(queued); i++ {
 				b := queued[i]
@@ -156,74 +188,79 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 					continue
 				}
 
-				// Must match station type
+				// Load step for this batch.
 				step, _ := uc.sopRepo.FindStepByID(ctx, b.SOPStepID)
-				if step == nil || step.StationTypeID != m.StationTypeID {
+				if step == nil || step.EquipmentTypeID == nil {
+					continue // Non-machine step; skip allocation engine.
+				}
+
+				// Machine must match the step's equipment type.
+				if *step.EquipmentTypeID != m.EquipmentTypeID {
 					continue
 				}
 
-				// Priority pass: only accept steps matching currently active step descriptions
-				if step.AllowMix && len(activeStepNames) > 0 {
-					isMatchingActive := activeStepNames[step.Description]
+				// Load capacity config for this (item, equipment type) pair.
+				cfg, _ := uc.getCapConfig(ctx, b.ItemID, *step.EquipmentTypeID)
+
+				// Priority pass: only accept steps matching currently active mix descriptions.
+				if cfg != nil && cfg.AllowMix && len(activeMixDescriptions) > 0 {
+					isMatchingActive := activeMixDescriptions[step.Description]
 					if pass == 1 && !isMatchingActive {
-						continue // skip non-matching in first pass
+						continue
 					}
 					if pass == 2 && isMatchingActive {
-						continue // already evaluated in first pass
+						continue
 					}
 				} else if pass == 1 {
-					// If no active mixing steps or step doesn't allow mix, skip first pass
 					continue
 				}
 
 				if currentLoad >= m.MaxCapacity {
-					break // Machine full for this run
+					break
 				}
 
-				// Check capacity and handle splitting
+				// Determine fit quantity (with splitting if batch exceeds remaining capacity).
 				canAllocate := false
 				needsSplit := false
 				fitQty := b.Qty
 				fitSlots := b.SlotsUsed
-				limit := m.MaxCapacity
+				slotPerUnit := 0.0
+				if cfg != nil {
+					slotPerUnit = cfg.SlotConsumption
+				}
 
-				if currentLoad+b.SlotsUsed > limit {
-					// Try to split
-					if step.SlotConsumption > 0 {
-						available := limit - currentLoad
-						fitQty = float64(int(available / step.SlotConsumption)) // Greedy floor
+				if currentLoad+b.SlotsUsed > m.MaxCapacity {
+					if slotPerUnit > 0 {
+						available := m.MaxCapacity - currentLoad
+						fitQty = float64(int(available / slotPerUnit))
 						if fitQty > 0 {
-							fitSlots = fitQty * step.SlotConsumption
+							fitSlots = fitQty * slotPerUnit
 							needsSplit = true
 						} else {
-							continue // Cannot fit even one unit
+							continue
 						}
 					} else {
-						continue // Zero consumption but still exceeds limit? Should not happen.
+						continue
 					}
 				}
 
-				// Allocation Strategy Logic
-				if m.AllocationStrategy == models.StrategyAsync {
+				// Mixing / item exclusivity check.
+				if currentLoad == 0 {
 					canAllocate = true
-				} else {
-					// BATCH_SYNC
-					if currentLoad == 0 {
-						canAllocate = true
-					} else if b.ItemID == referenceItemID {
-						canAllocate = true
-					} else {
-						// Check if BOTH the existing steps and the new step allow mixing
-						// If any of them has AllowMix = false, they cannot be mixed.
-
-						// We need to fetch the SOPStep for the reference batch
-						refBatch, _ := uc.batchRepo.FindByMachine(ctx, m.ID, []models.BatchStatus{models.BatchAllocated, models.BatchInProgress})
-						var refStep *models.SOPStep
-						if len(refBatch) > 0 {
-							refStep, _ = uc.sopRepo.FindStepByID(ctx, refBatch[0].SOPStepID)
+				} else if b.ItemID == referenceItemID {
+					canAllocate = true
+				} else if cfg != nil && cfg.AllowMix {
+					// Check if the reference item's config also allows mixing.
+					var refEquipTypeID string
+					if len(activeBatches) > 0 {
+						refStep, _ := uc.sopRepo.FindStepByID(ctx, activeBatches[0].SOPStepID)
+						if refStep != nil && refStep.EquipmentTypeID != nil {
+							refEquipTypeID = *refStep.EquipmentTypeID
 						}
-
-						if step.AllowMix && refStep != nil && refStep.AllowMix {
+					}
+					if refEquipTypeID != "" {
+						refCfg, _ := uc.getCapConfig(ctx, referenceItemID, refEquipTypeID)
+						if refCfg != nil && refCfg.AllowMix {
 							canAllocate = true
 						}
 					}
@@ -232,7 +269,6 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 				if canAllocate {
 					if needsSplit {
 						remainderQty := b.Qty - fitQty
-						// Create remainder batch
 						remainder := &models.ProductionBatch{
 							ID:        uuid.NewString(),
 							POID:      b.POID,
@@ -240,12 +276,11 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 							NodeID:    b.NodeID,
 							ItemID:    b.ItemID,
 							Qty:       remainderQty,
-							SlotsUsed: remainderQty * (fitSlots / fitQty),
+							SlotsUsed: remainderQty * slotPerUnit,
 							Status:    models.BatchQueued,
 						}
 						_ = uc.batchRepo.Create(ctx, remainder)
 
-						// Update current batch to the portion that fits
 						b.Qty = fitQty
 						b.SlotsUsed = fitSlots
 					}
@@ -260,8 +295,8 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 						if referenceItemID == "" {
 							referenceItemID = b.ItemID
 						}
-						if step.AllowMix {
-							activeStepNames[step.Description] = true
+						if cfg != nil && cfg.AllowMix {
+							activeMixDescriptions[step.Description] = true
 						}
 						queued[i] = nil
 					}
@@ -273,11 +308,13 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 	return nil
 }
 
+// ── ConfirmPlacement ──────────────────────────────────────────────────────────
+
 func (uc *allocationUseCase) ConfirmPlacement(ctx context.Context, batchID string) error {
-	// now := time.Now()
 	return uc.batchRepo.UpdateStatus(ctx, batchID, models.BatchInProgress)
-	// Implementation should also set StartedAt = now in the actual repo/db update
 }
+
+// ── ConfirmCompletion ─────────────────────────────────────────────────────────
 
 func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID string) error {
 	batch, err := uc.batchRepo.FindByID(ctx, batchID)
@@ -289,7 +326,6 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		return err
 	}
 
-	// 1. Get PO and all its steps to find what's next
 	po, err := uc.poRepo.FindByID(ctx, batch.POID)
 	if err != nil || po == nil {
 		return fmt.Errorf("production order %q not found", batch.POID)
@@ -300,13 +336,11 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		return err
 	}
 
-	// 2. Get all batches already created for this PO to check completion status
-	existingBatches, err := uc.batchRepo.FindByNode(ctx, po.NodeID, nil) // In a real system, filter by POID
+	existingBatches, err := uc.batchRepo.FindByNode(ctx, po.NodeID, nil)
 	if err != nil {
 		return err
 	}
 
-	// Helper to check if a specific step is completed
 	isStepCompleted := func(stepID string) bool {
 		for _, eb := range existingBatches {
 			if eb.POID == po.ID && eb.SOPStepID == stepID && eb.Status == models.BatchCompleted {
@@ -316,7 +350,7 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		return false
 	}
 
-	// 3. Find steps that depend on the step we just finished
+	// Find and unlock dependent steps whose all dependencies are now met.
 	for _, nextStep := range allSteps {
 		isDependent := false
 		for _, depID := range nextStep.DependsOn {
@@ -325,39 +359,35 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 				break
 			}
 		}
+		if !isDependent {
+			continue
+		}
 
-		if isDependent {
-			// 4. Check if ALL dependencies for this nextStep are now satisfied
-			allMet := true
-			for _, depID := range nextStep.DependsOn {
-				if !isStepCompleted(depID) {
-					allMet = false
+		allMet := true
+		for _, depID := range nextStep.DependsOn {
+			if !isStepCompleted(depID) {
+				allMet = false
+				break
+			}
+		}
+
+		if allMet {
+			alreadyExists := false
+			for _, eb := range existingBatches {
+				if eb.POID == po.ID && eb.SOPStepID == nextStep.ID {
+					alreadyExists = true
 					break
 				}
 			}
-
-			// 5. If all met, create the next QUEUED batch
-			if allMet {
-				// Check if we already created a batch for this step to avoid duplicates
-				alreadyExists := false
-				for _, eb := range existingBatches {
-					if eb.POID == po.ID && eb.SOPStepID == nextStep.ID {
-						alreadyExists = true
-						break
-					}
-				}
-
-				if !alreadyExists {
-					if err := uc.createBatchForStep(ctx, po, nextStep.ID); err != nil {
-						// Log error but continue
-						fmt.Printf("failed to create batch for step %s: %v\n", nextStep.ID, err)
-					}
+			if !alreadyExists {
+				if err := uc.createBatchForStep(ctx, po, nextStep.ID); err != nil {
+					fmt.Printf("failed to create batch for step %s: %v\n", nextStep.ID, err)
 				}
 			}
 		}
 	}
 
-	// 5. Check if ALL steps in the SOP are completed
+	// Check if ALL steps in the SOP are completed.
 	allSOPCompleted := true
 	for _, step := range allSteps {
 		if !isStepCompleted(step.ID) {
@@ -371,6 +401,5 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		}
 	}
 
-	// 6. Trigger allocation for the newly queued tasks
 	return uc.RunAllocation(ctx, po.NodeID)
 }

@@ -5,31 +5,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"one-system-server/internal/domain/models"
 	"one-system-server/internal/usecase"
 )
 
 type stationTypeHandler struct {
-	uc usecase.StationTypeUseCase
+	uc usecase.EquipmentTypeUseCase
 }
 
-func newStationTypeHandler(uc usecase.StationTypeUseCase) *stationTypeHandler {
+func newStationTypeHandler(uc usecase.EquipmentTypeUseCase) *stationTypeHandler {
 	return &stationTypeHandler{uc: uc}
 }
 
 // POST /api/v1/station-types
 func (h *stationTypeHandler) Create(c *gin.Context) {
 	var req struct {
-		ID              string                    `json:"id"               binding:"required"`
-		Name            string                    `json:"name"             binding:"required"`
-		CapacityUnit    string                    `json:"capacity_unit"    binding:"required"`
-		DefaultStrategy models.AllocationStrategy `json:"default_strategy" binding:"required"`
+		ID           string `json:"id"            binding:"required"`
+		Name         string `json:"name"          binding:"required"`
+		CapacityUnit string `json:"capacity_unit" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	st, err := h.uc.Create(c.Request.Context(), req.ID, req.Name, req.CapacityUnit, req.DefaultStrategy)
+	st, err := h.uc.Create(c.Request.Context(), req.ID, req.Name, req.CapacityUnit)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -60,15 +58,14 @@ func (h *stationTypeHandler) GetByID(c *gin.Context) {
 // PUT /api/v1/station-types/:id
 func (h *stationTypeHandler) Update(c *gin.Context) {
 	var req struct {
-		Name            string                    `json:"name"             binding:"required"`
-		CapacityUnit    string                    `json:"capacity_unit"    binding:"required"`
-		DefaultStrategy models.AllocationStrategy `json:"default_strategy" binding:"required"`
+		Name         string `json:"name"          binding:"required"`
+		CapacityUnit string `json:"capacity_unit" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	st, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.Name, req.CapacityUnit, req.DefaultStrategy)
+	st, err := h.uc.Update(c.Request.Context(), c.Param("id"), req.Name, req.CapacityUnit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -10,73 +10,85 @@ import (
 
 // ── Interface ─────────────────────────────────────────────────────────────────
 
-type StationTypeUseCase interface {
-	Create(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error)
-	GetByID(ctx context.Context, id string) (*models.StationType, error)
-	List(ctx context.Context) ([]*models.StationType, error)
-	Update(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error)
+// EquipmentTypeUseCase manages EquipmentType records (formerly called StationType).
+// EquipmentType is the category of kitchen equipment (e.g., FRYER, OVEN, GRILL).
+// It is the model equivalent of what the business spec calls "StationType".
+type EquipmentTypeUseCase interface {
+	Create(ctx context.Context, id, name, capacityUnit string) (*models.EquipmentType, error)
+	GetByID(ctx context.Context, id string) (*models.EquipmentType, error)
+	List(ctx context.Context) ([]*models.EquipmentType, error)
+	Update(ctx context.Context, id, name, capacityUnit string) (*models.EquipmentType, error)
 	Delete(ctx context.Context, id string) error
 }
 
+// StationTypeUseCase is an alias for EquipmentTypeUseCase kept for backward compatibility
+// with existing transport-layer callers. New code should use EquipmentTypeUseCase directly.
+type StationTypeUseCase = EquipmentTypeUseCase
+
 // ── Implementation ────────────────────────────────────────────────────────────
 
-type stationTypeUseCase struct {
-	repo services.StationTypeRepository
+type equipmentTypeUseCase struct {
+	repo services.EquipmentTypeRepository
 }
 
-func NewStationTypeUseCase(repo services.StationTypeRepository) StationTypeUseCase {
-	return &stationTypeUseCase{repo: repo}
+// NewEquipmentTypeUseCase constructs the EquipmentTypeUseCase.
+func NewEquipmentTypeUseCase(repo services.EquipmentTypeRepository) EquipmentTypeUseCase {
+	return &equipmentTypeUseCase{repo: repo}
 }
 
-// Create uses caller-supplied id (e.g. "FRYER", "OVEN") — StationType is enum-style.
-func (uc *stationTypeUseCase) Create(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error) {
+// NewStationTypeUseCase is an alias constructor for backward compatibility.
+func NewStationTypeUseCase(repo services.EquipmentTypeRepository) EquipmentTypeUseCase {
+	return NewEquipmentTypeUseCase(repo)
+}
+
+// Create uses caller-supplied id (e.g., "FRYER", "OVEN") — EquipmentType is enum-style.
+func (uc *equipmentTypeUseCase) Create(ctx context.Context, id, name, capacityUnit string) (*models.EquipmentType, error) {
 	if id == "" || name == "" || capacityUnit == "" {
 		return nil, fmt.Errorf("id, name, and capacity_unit are required")
 	}
-	st := &models.StationType{
-		ID:              id,
-		Name:            name,
-		CapacityUnit:    capacityUnit,
-		DefaultStrategy: defaultStrategy,
+	et := &models.EquipmentType{
+		ID:           id,
+		Name:         name,
+		CapacityUnit: capacityUnit,
+		Status:       models.EquipmentTypeActive,
 	}
-	if err := uc.repo.Create(ctx, st); err != nil {
+	if err := uc.repo.Create(ctx, et); err != nil {
 		return nil, err
 	}
-	return st, nil
+	return et, nil
 }
 
-func (uc *stationTypeUseCase) GetByID(ctx context.Context, id string) (*models.StationType, error) {
-	st, err := uc.repo.FindByID(ctx, id)
+func (uc *equipmentTypeUseCase) GetByID(ctx context.Context, id string) (*models.EquipmentType, error) {
+	et, err := uc.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if st == nil {
-		return nil, fmt.Errorf("station type %q not found", id)
+	if et == nil {
+		return nil, fmt.Errorf("equipment type %q not found", id)
 	}
-	return st, nil
+	return et, nil
 }
 
-func (uc *stationTypeUseCase) List(ctx context.Context) ([]*models.StationType, error) {
+func (uc *equipmentTypeUseCase) List(ctx context.Context) ([]*models.EquipmentType, error) {
 	return uc.repo.FindAll(ctx)
 }
 
-func (uc *stationTypeUseCase) Update(ctx context.Context, id, name, capacityUnit string, defaultStrategy models.AllocationStrategy) (*models.StationType, error) {
-	st, err := uc.repo.FindByID(ctx, id)
+func (uc *equipmentTypeUseCase) Update(ctx context.Context, id, name, capacityUnit string) (*models.EquipmentType, error) {
+	et, err := uc.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if st == nil {
-		return nil, fmt.Errorf("station type %q not found", id)
+	if et == nil {
+		return nil, fmt.Errorf("equipment type %q not found", id)
 	}
-	st.Name = name
-	st.CapacityUnit = capacityUnit
-	st.DefaultStrategy = defaultStrategy
-	if err := uc.repo.Update(ctx, st); err != nil {
+	et.Name = name
+	et.CapacityUnit = capacityUnit
+	if err := uc.repo.Update(ctx, et); err != nil {
 		return nil, err
 	}
-	return st, nil
+	return et, nil
 }
 
-func (uc *stationTypeUseCase) Delete(ctx context.Context, id string) error {
+func (uc *equipmentTypeUseCase) Delete(ctx context.Context, id string) error {
 	return uc.repo.Delete(ctx, id)
 }

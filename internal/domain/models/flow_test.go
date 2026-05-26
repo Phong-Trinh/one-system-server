@@ -119,10 +119,10 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 	}
 
 	t.Log("Step 4: HQ issues PurO linked to PR")
-	po := &PurchaseOrder{
+	purO := &PurchaseOrder{
 		ID:               "po_1",
 		OrgID:            bd.Org.ID,
-		TriggerType:      POTriggerPR,
+		TriggerType:      PurOTriggerPR,
 		PRID:             &pr.ID,
 		HQNodeID:         bd.HQ.ID,
 		SupplierID:       targetSupplier.ID,
@@ -130,24 +130,24 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 		Status:           PurchaseOrderConfirmed,
 	}
 	
-	poLine := &PurchaseOrderLine{
+	purOLine := &PurchaseOrderLine{
 
 		ID:              "pol_1",
-		POID:            po.ID,
+		PurOID:          purO.ID,
 		EquipmentTypeID: prLine.EquipmentTypeID,
 		QtyOrdered:      1,
 		PkgUnit:         "unit",
 		Conversion:      1.0,
 		UnitPrice:       1450.00,
 	}
-	_ = poLine
+	_ = purOLine
 
 	t.Log("Step 5: Store receives the Fryer... BUT it is badly dented!")
 	// Real-world Exception: Damaged hardware on arrival
 	gr := &GoodsReceipt{
 		ID:              "gr_1",
 		RefType:         GoodsReceiptRefPurO,
-		RefID:           po.ID,
+		RefID:           purO.ID,
 		ReceivingNodeID: bd.Store.ID,
 		Status:          GoodsReceiptDiscrepancy, // Changed from Confirmed
 	}
@@ -174,10 +174,10 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 	t.Log("--- DAY 2: OpEx Auto-Replenishment with Fresh Produce Damage ---")
 	
 	t.Log("Step 1: System detects Factory needs Potatoes (ROP breached)")
-	draftPo := &PurchaseOrder{
+	draftPurO := &PurchaseOrder{
 		ID:               "po_2",
 		OrgID:            bd.Org.ID,
-		TriggerType:      POTriggerAutoDraft,
+		TriggerType:      PurOTriggerAutoDraft,
 		HQNodeID:         bd.HQ.ID,
 		DeliveryToNodeID: bd.Factory.ID,
 		Status:           PurchaseOrderDraft,
@@ -187,12 +187,12 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 	farmSupplier := &Supplier{ID: "supp_dalat_farm", OrgID: bd.Org.ID, Name: "Dalat Fresh Farm"}
 	bd.Suppliers[farmSupplier.ID] = farmSupplier
 	
-	draftPo.SupplierID = farmSupplier.ID
-	draftPo.Status = PurchaseOrderConfirmed
+	draftPurO.SupplierID = farmSupplier.ID
+	draftPurO.Status = PurchaseOrderConfirmed
 	
-	poLine2 := &PurchaseOrderLine{
+	purOLine2 := &PurchaseOrderLine{
 		ID:         "pol_2",
-		POID:       draftPo.ID,
+		PurOID:     draftPurO.ID,
 		ItemID:     &bd.Potatoes.ID,
 		QtyOrdered: 100, // 100 sacks ordered
 		PkgUnit:    "sack",
@@ -203,7 +203,7 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 	gr2 := &GoodsReceipt{
 		ID:              "gr_2",
 		RefType:         GoodsReceiptRefPurO,
-		RefID:           draftPo.ID,
+		RefID:           draftPurO.ID,
 		ReceivingNodeID: bd.Factory.ID,
 		Status:          GoodsReceiptDiscrepancy, // Real-world weather damage
 	}
@@ -213,9 +213,9 @@ func TestBusinessDrivenEndToEndFlow(t *testing.T) {
 	grLine2 := &GoodsReceiptLine{
 		ID:          "grl_2",
 		GRID:        gr2.ID,
-		ItemID:      *poLine2.ItemID,
-		QtyExpected: poLine2.QtyOrdered * poLine2.Conversion, // 2500 kg
-		QtyReceived: qtyReceived * poLine2.Conversion,        // 2375 kg
+		ItemID:      *purOLine2.ItemID,
+		QtyExpected: purOLine2.QtyOrdered * purOLine2.Conversion, // 2500 kg
+		QtyReceived: qtyReceived * purOLine2.Conversion,        // 2375 kg
 	}
 	
 	if grLine2.QtyReceived < grLine2.QtyExpected {
