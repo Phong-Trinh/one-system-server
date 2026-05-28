@@ -62,6 +62,7 @@ type PurOUseCase interface {
 	GetPurO(ctx context.Context, purOID string) (*models.PurchaseOrder, []*models.PurchaseOrderLine, error)
 	ListDrafts(ctx context.Context, orgID string) ([]*models.PurchaseOrder, error)
 	ListByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error)
+	HasActivePurO(ctx context.Context, deliveryNodeID, itemID string) (bool, error)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -327,6 +328,29 @@ func (uc *purOUseCase) ListDrafts(ctx context.Context, orgID string) ([]*models.
 
 func (uc *purOUseCase) ListByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error) {
 	return uc.purORepo.FindByDeliveryNode(ctx, nodeID)
+}
+
+func (uc *purOUseCase) HasActivePurO(ctx context.Context, deliveryNodeID, itemID string) (bool, error) {
+	puros, err := uc.purORepo.FindByDeliveryNode(ctx, deliveryNodeID)
+	if err != nil {
+		return false, err
+	}
+	for _, po := range puros {
+		if po.Status == models.PurchaseOrderCompleted || po.Status == models.PurchaseOrderCancelled {
+			continue // Not active
+		}
+		
+		lines, err := uc.lineRepo.ListByPurO(ctx, po.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, l := range lines {
+			if l.ItemID != nil && *l.ItemID == itemID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (uc *purOUseCase) loadPurO(ctx context.Context, id string) (*models.PurchaseOrder, error) {

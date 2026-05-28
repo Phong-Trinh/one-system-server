@@ -176,6 +176,18 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 			return fmt.Errorf("facade: HandleROPBreach: INTERNAL_TRANSFER but provider_node_id not set on NodeItemConfig for node=%s item=%s",
 				cfg.NodeID, cfg.ItemID)
 		}
+		hasActive, err := f.ITO.HasActiveITO(ctx, cfg.NodeID, cfg.ItemID)
+		if err != nil {
+			return fmt.Errorf("facade: HandleROPBreach: check active ITO: %w", err)
+		}
+		if hasActive {
+			log.Info().
+				Str("node_id", cfg.NodeID).
+				Str("item_id", cfg.ItemID).
+				Msg("[SupplyChainFacade] ROP breached, but an active ITO already exists — skipping duplicate replenishment")
+			return nil
+		}
+
 		// Quantity to replenish = ReorderPoint - CurrentQty + SafetyStock (gap + buffer).
 		replenishQty := (cfg.ReorderPoint - result.CurrentQty) + cfg.SafetyStock
 		if replenishQty <= 0 {
@@ -190,6 +202,18 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 		log.Info().Str("ito_id", ito.ID).Msg("[SupplyChainFacade] Auto ITO created")
 
 	case models.SourcingExternalProcurement:
+		hasActive, err := f.PurO.HasActivePurO(ctx, cfg.NodeID, cfg.ItemID)
+		if err != nil {
+			return fmt.Errorf("facade: HandleROPBreach: check active PO: %w", err)
+		}
+		if hasActive {
+			log.Info().
+				Str("node_id", cfg.NodeID).
+				Str("item_id", cfg.ItemID).
+				Msg("[SupplyChainFacade] ROP breached, but an active PO already exists — skipping duplicate draft")
+			return nil
+		}
+
 		replenishQty := (cfg.ReorderPoint - result.CurrentQty) + cfg.SafetyStock
 		if replenishQty <= 0 {
 			replenishQty = cfg.SafetyStock

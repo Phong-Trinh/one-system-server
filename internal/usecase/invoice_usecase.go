@@ -34,6 +34,14 @@ type InvoiceUseCase interface {
 	// and triggers PO payment settlement (which auto-creates Asset for CapEx POs).
 	PerformThreeWayMatch(ctx context.Context, invoiceID, grID, matchedByStaffID string) (*models.Asset, error)
 
+	// PerformPrepaymentMatch validates PurO + Invoice (Two-Way Match before GR is available),
+	// creates a ledger expense entry, and marks Invoice as MATCHED.
+	PerformPrepaymentMatch(ctx context.Context, invoiceID, matchedByStaffID string) error
+
+	// LinkGoodsReceiptToPrepaidInvoice links a confirmed GoodsReceipt to an already MATCHED/PAID
+	// prepaid invoice, and settles the PurO (which auto-creates Asset for CapEx).
+	LinkGoodsReceiptToPrepaidInvoice(ctx context.Context, invoiceID, grID, matchedByStaffID string) (*models.Asset, error)
+
 	// MarkPaid records that the supplier has been paid.
 	MarkPaid(ctx context.Context, invoiceID string) error
 
@@ -181,6 +189,99 @@ func (uc *invoiceUseCase) PerformThreeWayMatch(ctx context.Context, invoiceID, g
 		asset, err := uc.puroUC.SettlePayment(ctx, purO.ID, invoiceID, grID, matchedByStaffID)
 		if err != nil {
 			return nil, fmt.Errorf("invoice: 3WayMatch: settle PO: %w", err)
+		}
+		return asset, nil
+	}
+
+	return nil, nil
+}
+
+// PerformPrepaymentMatch validates the PurO and Invoice against each other.
+// On success:
+//  1. Invoice status → MATCHED (with matched_by and matched_at set).
+//  2. A Transaction (EXPENSE, ref_type=SUPPLIER_INVOICE) is written to the ledger.
+func (uc *invoiceUseCase) PerformPrepaymentMatch(ctx context.Context, invoiceID, matchedByStaffID string) error {
+	inv, err := uc.loadInvoice(ctx, invoiceID)
+	if err != nil {
+		return err
+	}
+	if inv.Status != models.SupplierInvoicePending {
+		return fmt.Errorf("invoice: PrepaymentMatch: invoice %s is not PENDING (current: %s)", invoiceID, inv.Status)
+	}
+
+	purO, err := uc.purORepo.FindByID(ctx, inv.PurchaseOrderID)
+	if err != nil || purO == nil {
+		return fmt.Errorf("invoice: PrepaymentMatch: PurO %s not found: %w", inv.PurchaseOrderID, err)
+	}
+
+	// Mark as MATCHED.
+	now := time.Now()
+	inv.Status = models.SupplierInvoiceMatched
+	inv.MatchedBy = &matchedByStaffID
+	inv.MatchedAt = &now
+	inv.UpdatedAt = now
+
+	if err := uc.invoiceRepo.Update(ctx, inv); err != nil {
+		return fmt.Errorf("invoice: PrepaymentMatch: update invoice: %w", err)
+	}
+
+	// Write ledger expense entry for the node receiving goods.
+	tx := &models.Transaction{
+		ID:          uuid.NewString(),
+		NodeID:      purO.DeliveryToNodeID,
+		OrgID:       purO.OrgID,
+		Amount:      inv.TotalAmount,
+		Type:        models.TxExpense,
+		RefType:     models.TxRefSupplierInvoice,
+		ReferenceID: inv.ID,
+		Description: fmt.Sprintf("Supplier Pre-payment: Invoice %s (PurO %s)", inv.InvoiceNumber, purO.ID),
+		Timestamp:   now,
+	}
+	if err := uc.txRepo.Create(ctx, tx); err != nil {
+		return fmt.Errorf("invoice: PrepaymentMatch: create ledger entry: %w", err)
+	}
+
+	return nil
+}
+
+// LinkGoodsReceiptToPrepaidInvoice links a confirmed GR to an already prepaid invoice,
+// and completes the PurO (triggering Asset creation for CapEx).
+func (uc *invoiceUseCase) LinkGoodsReceiptToPrepaidInvoice(ctx context.Context, invoiceID, grID, matchedByStaffID string) (*models.Asset, error) {
+	inv, err := uc.loadInvoice(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv.Status != models.SupplierInvoiceMatched && inv.Status != models.SupplierInvoicePaid {
+		return nil, fmt.Errorf("invoice: LinkGR: invoice %s must be MATCHED or PAID (current: %s)", invoiceID, inv.Status)
+	}
+
+	purO, err := uc.purORepo.FindByID(ctx, inv.PurchaseOrderID)
+	if err != nil || purO == nil {
+		return nil, fmt.Errorf("invoice: LinkGR: PurO %s not found: %w", inv.PurchaseOrderID, err)
+	}
+
+	gr, err := uc.grRepo.FindByID(ctx, grID)
+	if err != nil || gr == nil {
+		return nil, fmt.Errorf("invoice: LinkGR: GR %s not found: %w", grID, err)
+	}
+
+	// Validate that GR is linked to the same PurO.
+	if gr.RefID != purO.ID {
+		return nil, fmt.Errorf("invoice: LinkGR: GR %s is linked to %s, not to PurO %s", grID, gr.RefID, purO.ID)
+	}
+
+	// Link GR to invoice.
+	inv.GRID = &grID
+	inv.UpdatedAt = time.Now()
+	if err := uc.invoiceRepo.Update(ctx, inv); err != nil {
+		return nil, fmt.Errorf("invoice: LinkGR: update invoice: %w", err)
+	}
+
+	// Settle the PurO — triggers Asset creation for CapEx PurOs.
+	if uc.puroUC != nil {
+		asset, err := uc.puroUC.SettlePayment(ctx, purO.ID, invoiceID, grID, matchedByStaffID)
+		if err != nil {
+			return nil, fmt.Errorf("invoice: LinkGR: settle PurO: %w", err)
 		}
 		return asset, nil
 	}

@@ -24,6 +24,7 @@ type nodeDoc struct {
 	Type      models.NodeType `bson:"type"`
 	Name      string          `bson:"name"`
 	Address   string          `bson:"address"`
+	SiteID    *string         `bson:"site_id,omitempty"`
 	CreatedAt time.Time       `bson:"created_at"`
 	UpdatedAt time.Time       `bson:"updated_at"`
 }
@@ -35,6 +36,7 @@ func nodeToDoc(n *models.Node) *nodeDoc {
 		Type:      n.Type,
 		Name:      n.Name,
 		Address:   n.Address,
+		SiteID:    n.SiteID,
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 	}
@@ -47,6 +49,7 @@ func docToNode(d *nodeDoc) *models.Node {
 		Type:      d.Type,
 		Name:      d.Name,
 		Address:   d.Address,
+		SiteID:    d.SiteID,
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,
 	}

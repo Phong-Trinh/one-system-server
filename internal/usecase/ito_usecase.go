@@ -92,6 +92,7 @@ type ITOUseCase interface {
 
 	GetITO(ctx context.Context, itoID string) (*models.InternalTransferOrder, []*models.ITOLine, error)
 	ListITOsByNode(ctx context.Context, nodeID string) ([]*models.InternalTransferOrder, error)
+	HasActiveITO(ctx context.Context, requesterNodeID, itemID string) (bool, error)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -452,6 +453,32 @@ func (uc *itoUseCase) GetITO(ctx context.Context, itoID string) (*models.Interna
 
 func (uc *itoUseCase) ListITOsByNode(ctx context.Context, nodeID string) ([]*models.InternalTransferOrder, error) {
 	return uc.itoRepo.FindByNode(ctx, nodeID)
+}
+
+func (uc *itoUseCase) HasActiveITO(ctx context.Context, requesterNodeID, itemID string) (bool, error) {
+	itos, err := uc.itoRepo.FindByNode(ctx, requesterNodeID)
+	if err != nil {
+		return false, err
+	}
+	for _, ito := range itos {
+		if ito.RequesterNodeID != requesterNodeID {
+			continue // Only care about ITOs where this node is requesting the stock
+		}
+		if ito.Status == models.ITOCompleted || ito.Status == models.ITOCancelled {
+			continue // Not active
+		}
+		
+		lines, err := uc.lineRepo.ListByITO(ctx, ito.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, l := range lines {
+			if l.ItemID == itemID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

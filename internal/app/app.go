@@ -61,6 +61,7 @@ func New(ctx context.Context) (*App, error) {
 	poRepo := mongorepo.NewProductionOrderRepository(mongoClient, dbName)
 	batchRepo := mongorepo.NewProductionBatchRepository(mongoClient, dbName)
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
+	itemCapacityConfigRepo := mongorepo.NewItemCapacityConfigRepository(mongoClient, dbName)
 
 	// ── Use Cases (Application) ───────────────────────────────────────────────
 	orgUC := usecase.NewOrgUseCase(orgRepo)
@@ -70,7 +71,7 @@ func New(ctx context.Context) (*App, error) {
 	staffUC := usecase.NewStaffUseCase(staffRepo, nodeRepo)
 	productionUC := usecase.NewProductionUseCase(poRepo, bomRepo, sopRepo, nodeRepo)
 	itemUC := usecase.NewItemUseCase(itemRepo)
-	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
+	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo, itemCapacityConfigRepo)
 
 	// ── Orchestrator (Auto-Decomposition Engine) ─────────────────────────────
 	orchestratorCfg := usecase.DefaultOrchestratorConfig()
@@ -88,7 +89,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	// ── Seed Kitchen Demo Data (Station types, Machines, Items, BOMs, SOPs) ──
-	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo); err != nil {
+	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo, itemCapacityConfigRepo); err != nil {
 		log.Error().Err(err).Msg("failed to seed kitchen demo data")
 	}
 

@@ -7,12 +7,14 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"one-system-server/internal/domain/models"
 	"one-system-server/internal/domain/services"
 )
 
 const collItems = "items"
+const collItemCapacityConfigs = "item_capacity_configs"
 
 type itemDoc struct {
 	ID       string          `bson:"_id"`
@@ -122,6 +124,95 @@ func (r *itemRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.col.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {
 		return fmt.Errorf("itemRepository.Delete: %w", err)
+	}
+	return nil
+}
+
+// ── ItemCapacityConfig ────────────────────────────────────────────────────────
+
+type itemCapacityConfigDoc struct {
+	ItemID          string  `bson:"item_id"`
+	EquipmentTypeID string  `bson:"equipment_type_id"`
+	SlotConsumption float64 `bson:"slot_consumption"`
+	AllowMix        bool    `bson:"allow_mix"`
+}
+
+func capacityConfigToDoc(c *models.ItemCapacityConfig) *itemCapacityConfigDoc {
+	return &itemCapacityConfigDoc{
+		ItemID:          c.ItemID,
+		EquipmentTypeID: c.EquipmentTypeID,
+		SlotConsumption: c.SlotConsumption,
+		AllowMix:        c.AllowMix,
+	}
+}
+
+func docToCapacityConfig(d *itemCapacityConfigDoc) *models.ItemCapacityConfig {
+	return &models.ItemCapacityConfig{
+		ItemID:          d.ItemID,
+		EquipmentTypeID: d.EquipmentTypeID,
+		SlotConsumption: d.SlotConsumption,
+		AllowMix:        d.AllowMix,
+	}
+}
+
+type itemCapacityConfigRepository struct {
+	col *mongo.Collection
+}
+
+func NewItemCapacityConfigRepository(client *Client, dbName string) services.ItemCapacityConfigRepository {
+	col := client.DB(dbName).Collection(collItemCapacityConfigs)
+	_, _ = col.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys:    bson.D{{Key: "item_id", Value: 1}, {Key: "equipment_type_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	return &itemCapacityConfigRepository{col: col}
+}
+
+func (r *itemCapacityConfigRepository) Save(ctx context.Context, config *models.ItemCapacityConfig) error {
+	filter := bson.M{"item_id": config.ItemID, "equipment_type_id": config.EquipmentTypeID}
+	update := bson.M{"$set": capacityConfigToDoc(config)}
+	opts := options.UpdateOne().SetUpsert(true)
+	_, err := r.col.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return fmt.Errorf("itemCapacityConfigRepository.Save: %w", err)
+	}
+	return nil
+}
+
+func (r *itemCapacityConfigRepository) Get(ctx context.Context, itemID, equipmentTypeID string) (*models.ItemCapacityConfig, error) {
+	var doc itemCapacityConfigDoc
+	err := r.col.FindOne(ctx, bson.M{"item_id": itemID, "equipment_type_id": equipmentTypeID}).Decode(&doc)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("itemCapacityConfigRepository.Get: %w", err)
+	}
+	return docToCapacityConfig(&doc), nil
+}
+
+func (r *itemCapacityConfigRepository) ListByEquipmentType(ctx context.Context, equipmentTypeID string) ([]*models.ItemCapacityConfig, error) {
+	cur, err := r.col.Find(ctx, bson.M{"equipment_type_id": equipmentTypeID})
+	if err != nil {
+		return nil, fmt.Errorf("itemCapacityConfigRepository.ListByEquipmentType: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var configs []*models.ItemCapacityConfig
+	for cur.Next(ctx) {
+		var doc itemCapacityConfigDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		configs = append(configs, docToCapacityConfig(&doc))
+	}
+	return configs, cur.Err()
+}
+
+func (r *itemCapacityConfigRepository) Delete(ctx context.Context, itemID, equipmentTypeID string) error {
+	_, err := r.col.DeleteOne(ctx, bson.M{"item_id": itemID, "equipment_type_id": equipmentTypeID})
+	if err != nil {
+		return fmt.Errorf("itemCapacityConfigRepository.Delete: %w", err)
 	}
 	return nil
 }

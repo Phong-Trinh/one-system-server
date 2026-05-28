@@ -18,9 +18,10 @@ const collEquipmentTypes = "equipment_types"
 // ── BSON document ─────────────────────────────────────────────────────────────
 
 type equipmentTypeDoc struct {
-	ID           string `bson:"_id"`
-	Name         string `bson:"name"`
-	CapacityUnit string `bson:"capacity_unit"`
+	ID           string                     `bson:"_id"`
+	Name         string                     `bson:"name"`
+	CapacityUnit string                     `bson:"capacity_unit"`
+	Status       models.EquipmentTypeStatus `bson:"status"`
 }
 
 func equipmentTypeToDoc(et *models.EquipmentType) *equipmentTypeDoc {
@@ -28,6 +29,7 @@ func equipmentTypeToDoc(et *models.EquipmentType) *equipmentTypeDoc {
 		ID:           et.ID,
 		Name:         et.Name,
 		CapacityUnit: et.CapacityUnit,
+		Status:       et.Status,
 	}
 }
 
@@ -36,6 +38,7 @@ func docToEquipmentType(d *equipmentTypeDoc) *models.EquipmentType {
 		ID:           d.ID,
 		Name:         d.Name,
 		CapacityUnit: d.CapacityUnit,
+		Status:       d.Status,
 	}
 }
 

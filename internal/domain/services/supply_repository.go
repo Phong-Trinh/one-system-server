@@ -18,9 +18,6 @@ type NodeStockRepository interface {
 	// Upsert creates or atomically overwrites the NodeStock record.
 	// Used by StockIn, StockOut, and InitStock operations.
 	Upsert(ctx context.Context, stock *models.NodeStock) error
-
-	// ListByNode returns all NodeStock records for a given node.
-	ListByNode(ctx context.Context, nodeID string) ([]*models.NodeStock, error)
 }
 
 // ── §2.1 NodeItemConfig ───────────────────────────────────────────────────────
@@ -33,22 +30,15 @@ type NodeItemConfigRepository interface {
 
 	// Upsert creates or updates the NodeItemConfig record.
 	Upsert(ctx context.Context, cfg *models.NodeItemConfig) error
-
-	// ListByNode returns all NodeItemConfig records for a given node.
-	ListByNode(ctx context.Context, nodeID string) ([]*models.NodeItemConfig, error)
 }
 
 // ── Supplier ──────────────────────────────────────────────────────────────────
 
 // SupplierRepository defines persistence for third-party vendors.
 type SupplierRepository interface {
-	Create(ctx context.Context, s *models.Supplier) error
+	Create(ctx context.Context, supplier *models.Supplier) error
 	FindByID(ctx context.Context, id string) (*models.Supplier, error)
 	FindByOrg(ctx context.Context, orgID string) ([]*models.Supplier, error)
-	// FindByName does a case-insensitive lookup within an org. Used during supplier-check flow.
-	FindByName(ctx context.Context, orgID, name string) (*models.Supplier, error)
-	Update(ctx context.Context, s *models.Supplier) error
-	Delete(ctx context.Context, id string) error
 }
 
 // ── §1.1 Internal Transfer Order ─────────────────────────────────────────────
@@ -60,16 +50,12 @@ type InternalTransferOrderRepository interface {
 	// FindByNode returns all ITOs where the node is either requester or provider.
 	FindByNode(ctx context.Context, nodeID string) ([]*models.InternalTransferOrder, error)
 	UpdateStatus(ctx context.Context, id string, status models.ITOStatus) error
-	Update(ctx context.Context, ito *models.InternalTransferOrder) error
-	Delete(ctx context.Context, id string) error
 }
 
 // ITOLineRepository defines persistence for ITO line items.
 type ITOLineRepository interface {
 	AddLine(ctx context.Context, line *models.ITOLine) error
 	ListByITO(ctx context.Context, itoID string) ([]*models.ITOLine, error)
-	UpdateLine(ctx context.Context, line *models.ITOLine) error
-	DeleteLine(ctx context.Context, id string) error
 }
 
 // ── §1.2 Purchase Requisition ────────────────────────────────────────────────
@@ -83,14 +69,12 @@ type PurchaseRequisitionRepository interface {
 	// FindPendingByOrg returns all PRs with PENDING_HQ_APPROVAL status for HQ dashboard.
 	FindPendingByOrg(ctx context.Context, orgID string) ([]*models.PurchaseRequisition, error)
 	Update(ctx context.Context, pr *models.PurchaseRequisition) error
-	Delete(ctx context.Context, id string) error
 }
 
 // PRLineRepository defines persistence for PR line items.
 type PRLineRepository interface {
 	AddLine(ctx context.Context, line *models.PRLine) error
 	ListByPR(ctx context.Context, prID string) ([]*models.PRLine, error)
-	DeleteLine(ctx context.Context, id string) error
 }
 
 // ── §1.3 Purchase Order ───────────────────────────────────────────────────────
@@ -104,7 +88,6 @@ type PurchaseOrderRepository interface {
 	// FindByDeliveryNode returns all POs targeting a specific destination node.
 	FindByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error)
 	Update(ctx context.Context, po *models.PurchaseOrder) error
-	Delete(ctx context.Context, id string) error
 }
 
 // PurchaseOrderLineRepository defines persistence for PO line items.
@@ -120,10 +103,7 @@ type PurchaseOrderLineRepository interface {
 type GoodsIssueRepository interface {
 	Create(ctx context.Context, gi *models.GoodsIssue) error
 	FindByID(ctx context.Context, id string) (*models.GoodsIssue, error)
-	// FindByRef returns GIs linked to a specific source document (ITO or B2B order).
-	FindByRef(ctx context.Context, refType models.GoodsIssueRefType, refID string) ([]*models.GoodsIssue, error)
 	UpdateStatus(ctx context.Context, id string, status models.GoodsIssueStatus) error
-	Update(ctx context.Context, gi *models.GoodsIssue) error
 }
 
 // GoodsIssueLineRepository defines persistence for GI line items.
@@ -138,10 +118,7 @@ type GoodsIssueLineRepository interface {
 type GoodsReceiptRepository interface {
 	Create(ctx context.Context, gr *models.GoodsReceipt) error
 	FindByID(ctx context.Context, id string) (*models.GoodsReceipt, error)
-	// FindByRef returns GRs linked to a source document (ITO or PurchaseOrder).
-	FindByRef(ctx context.Context, refType models.GoodsReceiptRefType, refID string) ([]*models.GoodsReceipt, error)
 	UpdateStatus(ctx context.Context, id string, status models.GoodsReceiptStatus) error
-	Update(ctx context.Context, gr *models.GoodsReceipt) error
 }
 
 // GoodsReceiptLineRepository defines persistence for GR line items.
@@ -156,10 +133,8 @@ type GoodsReceiptLineRepository interface {
 type DiscrepancyTicketRepository interface {
 	Create(ctx context.Context, dt *models.DiscrepancyTicket) error
 	FindByID(ctx context.Context, id string) (*models.DiscrepancyTicket, error)
-	// FindByGR returns all discrepancy tickets associated with a GoodsReceipt.
 	FindByGR(ctx context.Context, grID string) ([]*models.DiscrepancyTicket, error)
 	UpdateStatus(ctx context.Context, id string, status models.DiscrepancyTicketStatus, resolution *string, resolvedBy *string) error
-	Update(ctx context.Context, dt *models.DiscrepancyTicket) error
 }
 
 // ── Supplier Invoice ──────────────────────────────────────────────────────────
