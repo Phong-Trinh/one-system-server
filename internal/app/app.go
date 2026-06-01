@@ -62,6 +62,29 @@ func New(ctx context.Context) (*App, error) {
 	batchRepo := mongorepo.NewProductionBatchRepository(mongoClient, dbName)
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
 	itemCapacityConfigRepo := mongorepo.NewItemCapacityConfigRepository(mongoClient, dbName)
+	nodeItemConfigRepo := mongorepo.NewNodeItemConfigRepository(mongoClient, dbName)
+	
+	// Supply Chain Repositories
+	stockRepo := mongorepo.NewNodeStockRepository(mongoClient, dbName)
+	supplierRepo := mongorepo.NewSupplierRepository(mongoClient, dbName)
+	itoRepo := mongorepo.NewInternalTransferOrderRepository(mongoClient, dbName)
+	itoLineRepo := mongorepo.NewITOLineRepository(mongoClient, dbName)
+	prRepo := mongorepo.NewPurchaseRequisitionRepository(mongoClient, dbName)
+	prLineRepo := mongorepo.NewPRLineRepository(mongoClient, dbName)
+	puroRepo := mongorepo.NewPurchaseOrderRepository(mongoClient, dbName)
+	puroLineRepo := mongorepo.NewPurchaseOrderLineRepository(mongoClient, dbName)
+	giRepo := mongorepo.NewGoodsIssueRepository(mongoClient, dbName)
+	giLineRepo := mongorepo.NewGoodsIssueLineRepository(mongoClient, dbName)
+	grRepo := mongorepo.NewGoodsReceiptRepository(mongoClient, dbName)
+	grLineRepo := mongorepo.NewGoodsReceiptLineRepository(mongoClient, dbName)
+	dtRepo := mongorepo.NewDiscrepancyTicketRepository(mongoClient, dbName)
+	invoiceRepo := mongorepo.NewSupplierInvoiceRepository(mongoClient, dbName)
+	invoiceLineRepo := mongorepo.NewSupplierInvoiceLineRepository(mongoClient, dbName)
+	txRepo := mongorepo.NewTransactionRepository(mongoClient, dbName)
+	b2bRepo := mongorepo.NewB2BSalesOrderRepository(mongoClient, dbName)
+	b2bLineRepo := mongorepo.NewB2BSalesOrderLineRepository(mongoClient, dbName)
+	assetRepo := mongorepo.NewAssetRepository(mongoClient, dbName)
+	eqTypeRepo := mongorepo.NewEquipmentTypeRepository(mongoClient, dbName)
 
 	// ── Use Cases (Application) ───────────────────────────────────────────────
 	orgUC := usecase.NewOrgUseCase(orgRepo)
@@ -78,13 +101,45 @@ func New(ctx context.Context) (*App, error) {
 	orchestrator := usecase.NewOrderPoolingOrchestrator(allocationUC, poRepo, orchestratorCfg)
 	orchestrator.Start(ctx) // Starts background flush goroutine
 
+	// ── Supply Chain Facade ───────────────────────────────────────────────────
+	supplyRepos := usecase.SupplyChainRepos{
+		Stock:        stockRepo,
+		Config:       nodeItemConfigRepo,
+		Supplier:     supplierRepo,
+		ITO:          itoRepo,
+		ITOLine:      itoLineRepo,
+		PR:           prRepo,
+		PRLine:       prLineRepo,
+		PurO:         puroRepo,
+		PurOLine:     puroLineRepo,
+		GI:           giRepo,
+		GILine:       giLineRepo,
+		GR:           grRepo,
+		GRLine:       grLineRepo,
+		DT:           dtRepo,
+		Invoice:      invoiceRepo,
+		InvoiceLine:  invoiceLineRepo,
+		Transaction:  txRepo,
+		B2BOrder:     b2bRepo,
+		B2BOrderLine: b2bLineRepo,
+		Asset:        assetRepo,
+		Machine:      machineRepo,
+		Node:         nodeRepo,
+		EquipmentType: eqTypeRepo,
+	}
+	supplyFacade := usecase.NewSupplyChainFacade(supplyRepos)
+
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
-	router := transport.NewRouter(orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC, batchRepo, sopRepo, orchestrator)
+	router := transport.NewRouter(
+		orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC, 
+		batchRepo, sopRepo, orchestrator, 
+		supplyFacade, supplierRepo, eqTypeRepo,
+	)
 
 	a := &App{router: router, mongoClient: mongoClient}
 
 	// ── Seed Mock Data ────────────────────────────────────────────────────────
-	if err := a.seedData(ctx, orgRepo, nodeRepo); err != nil {
+	if err := a.seedData(ctx, orgRepo, nodeRepo, staffRepo); err != nil {
 		log.Error().Err(err).Msg("failed to seed initial data")
 	}
 
@@ -96,9 +151,9 @@ func New(ctx context.Context) (*App, error) {
 	return a, nil
 }
 
-func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, nodeRepo services.NodeRepository) error {
+func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, nodeRepo services.NodeRepository, staffRepo services.StaffRepository) error {
 	orgId := "SNAPBITE_ORG"
-	nodeId := "CUA_HANG_01"
+	siteId := "SITE_1"
 
 	// 1. Ensure Org exists
 	existingOrg, _ := orgRepo.FindByID(ctx, orgId)
@@ -110,18 +165,34 @@ func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, node
 		})
 	}
 
-	// 2. Ensure Node exists
-	existingNode, _ := nodeRepo.FindByID(ctx, nodeId)
-	if existingNode == nil {
-		log.Info().Msg("Seeding Store Node: CUA_HANG_01...")
-		_ = nodeRepo.Create(ctx, &models.Node{
-			ID:        nodeId,
-			OrgID:     orgId,
-			Type:      "STORE",
-			Name:      "SnapBite # Hoàng Hoa Thám",
-			Address:   "123 Hoàng Hoa Thám, Ba Đình, Hà Nội",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+	// 2. Ensure Nodes exist (1 HQ, 1 Factory, 1 Store at the same site)
+	nodes := []models.Node{
+		{ID: "HQ", OrgID: orgId, Type: models.NodeHQ, Name: "Headquarters", Address: "123 Main St", SiteID: &siteId},
+		{ID: "FACTORY", OrgID: orgId, Type: models.NodeFactory, Name: "Central Kitchen", Address: "123 Main St", SiteID: &siteId},
+		{ID: "STORE", OrgID: orgId, Type: models.NodeStore, Name: "Store #1", Address: "123 Main St", SiteID: &siteId},
+		{ID: "CUA_HANG_01", OrgID: orgId, Type: models.NodeStore, Name: "SnapBite # Hoàng Hoa Thám", Address: "123 Hoàng Hoa Thám, Ba Đình, Hà Nội"},
+	}
+
+	for _, n := range nodes {
+		existingNode, _ := nodeRepo.FindByID(ctx, n.ID)
+		if existingNode == nil {
+			log.Info().Str("node_id", n.ID).Msg("Seeding Node...")
+			n.CreatedAt = time.Now()
+			n.UpdatedAt = time.Now()
+			_ = nodeRepo.Create(ctx, &n)
+		}
+	}
+
+	// 3. Ensure Admin Staff exists for HQ
+	adminStaffId := "staff_hq_admin"
+	existingStaff, _ := staffRepo.FindByID(ctx, adminStaffId)
+	if existingStaff == nil {
+		log.Info().Msg("Seeding Admin Staff...")
+		_ = staffRepo.Create(ctx, &models.Staff{
+			ID:       adminStaffId,
+			NodeID:   "HQ",
+			Name:     "System Admin",
+			WageRate: 0,
 		})
 	}
 

@@ -1,0 +1,227 @@
+/* ─── Layout ─────────────────────────────────────────────────────────────────
+   App shell layout: sidebar, header, content area, grids, specialty cards.
+   Requires tokens.css, base.css, components.css.
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── App Shell ───────────────────────────────────────────── */
+#app { display: flex; height: 100vh; }
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 16px 0;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-logo .logo-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), hsl(280, 80%, 65%));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.sidebar-logo .logo-text { font-weight: 700; font-size: 15px; }
+.sidebar-logo .logo-sub  { font-size: 10px; color: var(--text-faint); }
+
+/* ── Navigation ──────────────────────────────────────────── */
+.nav-section { margin-top: 12px; }
+
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  padding: 6px 20px;
+  text-transform: uppercase;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  width: 100%;
+  text-align: left;
+  border-radius: 0;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.nav-item:hover {
+  color: var(--text);
+  background: hsl(222, 18%, 14%);
+}
+
+.nav-item.active {
+  color: var(--text);
+  background: hsl(252, 60%, 14%);
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+/* ── Sidebar Bottom / User Chip ──────────────────────────── */
+.sidebar-bottom {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), hsl(280, 80%, 65%));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.user-info    { min-width: 0; }
+.user-name    { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-role    { font-size: 10px; color: var(--text-faint); }
+
+/* ── Node Colour Bar (top of sidebar) ────────────────────── */
+.node-bar { height: 3px; width: 100%; }
+.node-bar.hq  { background: linear-gradient(90deg, var(--hq),  transparent); }
+.node-bar.fac { background: linear-gradient(90deg, var(--fac), transparent); }
+.node-bar.sto { background: linear-gradient(90deg, var(--sto), transparent); }
+
+/* ── Header ──────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+#header {
+  height: 56px;
+  min-height: 56px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  gap: 16px;
+}
+
+.header-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.breadcrumb-sep    { color: var(--text-faint); }
+.header-right      { display: flex; align-items: center; gap: 10px; }
+
+/* ── Content & Pages ─────────────────────────────────────── */
+#content { flex: 1; overflow-y: auto; padding: 28px; }
+
+.page         { display: none; }
+.page.active  { display: block; animation: fadeUp 0.2s ease; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.page-header { margin-bottom: 24px; }
+.page-header h2 { font-size: 22px; }
+
+/* ── Grids ───────────────────────────────────────────────── */
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
+@media (max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 800px)  { .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+/* ── Machine Card (KDS) ──────────────────────────────────── */
+.machine-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.machine-card.busy        { border-color: hsl(38,  60%, 35%); }
+.machine-card.idle        { border-color: hsl(145, 55%, 25%); }
+.machine-card.maintenance { border-color: hsl(3,   55%, 30%); }
+
+.machine-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.dot-idle           { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot-busy           { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dot-under-maintenance { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.dot-decommissioned { background: var(--text-faint); }
+
+/* ── ROP Bar ─────────────────────────────────────────────── */
+.rop-bar-wrap { display: flex; flex-direction: column; gap: 4px; }
+.rop-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ── Status Pill ─────────────────────────────────────────── */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}

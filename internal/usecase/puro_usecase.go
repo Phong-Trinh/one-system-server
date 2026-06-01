@@ -15,12 +15,12 @@ import (
 
 // PurOLineInput is a single line item when creating or confirming a PurchaseOrder.
 type PurOLineInput struct {
-	ItemID          *string // FK → Item (nil for CapEx lines)
-	EquipmentTypeID *string // FK → EquipmentType (nil for OpEx lines)
-	QtyOrdered      float64 // In packaging units
-	PkgUnit         string
-	Conversion      float64 // Base units per pkg_unit
-	UnitPrice       float64 // Price per packaging unit (from supplier quote)
+	ItemID          *string `json:"item_id"`           // FK → Item (nil for CapEx lines)
+	EquipmentTypeID *string `json:"equipment_type_id"` // FK → EquipmentType (nil for OpEx lines)
+	QtyOrdered      float64 `json:"qty_ordered"`       // In packaging units
+	PkgUnit         string  `json:"pkg_unit"`
+	Conversion      float64 `json:"conversion"`        // Base units per pkg_unit
+	UnitPrice       float64 `json:"unit_price"`        // Price per packaging unit (from supplier quote)
 }
 
 // ── Interface ─────────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ func (uc *purOUseCase) GetPurO(ctx context.Context, purOID string) (*models.Purc
 }
 
 func (uc *purOUseCase) ListDrafts(ctx context.Context, orgID string) ([]*models.PurchaseOrder, error) {
-	return uc.purORepo.FindByStatus(ctx, orgID, models.PurchaseOrderDraft)
+	return uc.purORepo.FindByStatus(ctx, orgID, "")
 }
 
 func (uc *purOUseCase) ListByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error) {

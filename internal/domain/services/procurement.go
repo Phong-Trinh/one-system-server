@@ -40,23 +40,23 @@ type PRService interface {
 
 // SubmitPRRequest carries the data needed to create a new PurchaseRequisition.
 type SubmitPRRequest struct {
-	OrgID           string
-	RequesterNodeID string
-	StaffID         string
-	Justification   string
-	Lines           []PRLineInput
+	OrgID           string        `json:"org_id"`
+	RequesterNodeID string        `json:"requester_node_id"`
+	StaffID         string        `json:"staff_id"`
+	Justification   string        `json:"justification"`
+	Lines           []PRLineInput `json:"lines"`
 }
 
 // PRLineInput is a single line item within a new PR submission.
 // Either ItemID or EquipmentTypeID must be set — not both.
 type PRLineInput struct {
-	ItemID                *string // FK → Item (OpEx exceptional request)
-	EquipmentTypeID       *string // FK → EquipmentType (CapEx asset)
-	ProposedEquipmentName *string // Name of the brand new equipment type if not yet registered
-	ProposedCapacityUnit  *string // Capacity unit (e.g., "tray", "liter") of the new equipment type
-	ExpectedCapacity      *float64 // Expected capacity size of the requested machine to buy
-	Qty                   float64
-	UnitOfMeasure         string
-	EstimatedUnitPrice    float64
-	Justification         string
+	ItemID                *string  `json:"item_id"`
+	EquipmentTypeID       *string  `json:"equipment_type_id"`
+	ProposedEquipmentName *string  `json:"proposed_equipment_name"`
+	ProposedCapacityUnit  *string  `json:"proposed_capacity_unit"`
+	ExpectedCapacity      *float64 `json:"expected_capacity"`
+	Qty                   float64  `json:"qty"`
+	UnitOfMeasure         string   `json:"unit_of_measure"`
+	EstimatedUnitPrice    float64  `json:"estimated_unit_price"`
+	Justification         string   `json:"justification"`
 }

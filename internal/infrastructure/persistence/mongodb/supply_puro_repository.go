@@ -101,7 +101,11 @@ func (r *puroRepository) FindByID(ctx context.Context, id string) (*models.Purch
 }
 
 func (r *puroRepository) FindByStatus(ctx context.Context, orgID string, status models.PurchaseOrderStatus) ([]*models.PurchaseOrder, error) {
-	cur, err := r.col.Find(ctx, bson.M{"org_id": orgID, "status": status})
+	filter := bson.M{"org_id": orgID}
+	if status != "" {
+		filter["status"] = status
+	}
+	cur, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("puroRepository.FindByStatus: %w", err)
 	}

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneSystem — Admin Portal</title>
+  <meta name="description" content="OneSystem Admin Portal — manage HQ, Factory, and Store nodes from a single admin account." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Stylesheets (order matters: tokens → base → components → layout → screens) -->
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/screens.css" />
+</head>
+<body>
+
+<!-- ── Toast Container ──────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Screen 1: Login ──────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="lm">OS</div>
+      <div>
+        <div class="lt">OneSystem</div>
+        <div class="ls">Admin Portal</div>
+      </div>
+    </div>
+    <div class="flex col gap-16">
+      <div class="field">
+        <label>Email</label>
+        <input id="login-email" type="email" value="admin@onesystem.local" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="login-password" type="password" value="admin123" autocomplete="current-password" />
+      </div>
+      <button class="btn btn-primary fw" onclick="doLogin()" style="padding:12px">
+        Sign In
+      </button>
+    </div>
+    <p class="login-hint">Credentials: admin@onesystem.local / admin123</p>
+  </div>
+</div>
+
+<!-- ── Screen 2: Node Selector ──────────────────────────── -->
+<div id="node-selector" class="hidden">
+  <div class="node-selector-header">
+    <div class="badge badge-purple" style="margin-bottom:12px">● ADMIN</div>
+    <h1>Select a Node</h1>
+    <p class="dim">Enter any node context to manage operations</p>
+  </div>
+
+  <div class="node-cards" id="node-cards-container">
+    <p class="dim">Loading nodes...</p>
+  </div>
+
+  <button class="btn btn-ghost logout-btn-ns" onclick="doLogout()">← Logout</button>
+</div>
+
+<!-- ── Screen 3: Main App Shell ─────────────────────────── -->
+<div id="app" class="hidden">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="node-bar" id="sidebar-node-bar"></div>
+    <div class="sidebar-logo">
+      <div class="logo-mark">OS</div>
+      <div>
+        <div class="logo-text">OneSystem</div>
+        <div class="logo-sub">Admin Portal</div>
+      </div>
+    </div>
+    <div id="nav-menu" class="nav-section"></div>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">A</div>
+        <div class="user-info">
+          <div class="user-name">System Admin</div>
+          <div class="user-role">admin@onesystem.local</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content area -->
+  <div id="main">
+    <header id="header">
+      <div class="header-breadcrumb">
+        <span class="dim">OneSystem</span>
+        <span class="breadcrumb-sep">›</span>
+        <span id="hdr-node-label" style="font-weight:600"></span>
+        <span class="breadcrumb-sep">›</span>
+        <span id="hdr-page-label" style="color:var(--text-dim)"></span>
+      </div>
+      <div class="header-right">
+        <div id="hdr-node-badge"></div>
+        <button class="btn btn-ghost btn-sm" onclick="showNodeSelector()">⇄ Switch Node</button>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()">Logout</button>
+      </div>
+    </header>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<!-- ── Modal Container ───────────────────────────────────── -->
+<div id="modal-container" class="hidden"></div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     JavaScript — load order:
+       1. Data          → all domain mock data globals
+       2. Core          → state, toast
+       3. Shared        → helpers, modal system
+       4. Features      → HQ, Factory, Store page renderers
+       5. Core router   → after all render functions are defined
+       6. App init      → attach DOM event listeners last
+     ══════════════════════════════════════════════════════ -->
+
+<!-- Core -->
+<script src="js/core/api.js"></script>
+<script src="js/core/state.js"></script>
+<script src="js/core/toast.js"></script>
+
+<!-- Shared -->
+<script src="js/shared/helpers.js"></script>
+<script src="js/shared/modal.js"></script>
+
+<!-- Auth -->
+<script src="js/features/auth/auth.js"></script>
+
+<!-- HQ Features -->
+<script src="js/features/hq/purchase-requisitions.js"></script>
+<script src="js/features/hq/purchase-orders.js"></script>
+<script src="js/features/hq/goods-receipts.js"></script>
+<script src="js/features/hq/invoices.js"></script>
+<script src="js/features/hq/assets.js"></script>
+<script src="js/features/hq/equipment-types.js"></script>
+<script src="js/features/hq/suppliers.js"></script>
+<script src="js/features/hq/b2b-sales.js"></script>
+<script src="js/features/hq/bom-sop.js"></script>
+<script src="js/features/hq/discrepancy.js"></script>
+<script src="js/features/hq/financials.js"></script>
+<script src="js/features/hq/dashboard.js"></script>
+
+<!-- Factory Features -->
+<script src="js/features/factory/production-orders.js"></script>
+<script src="js/features/factory/kds.js"></script>
+<script src="js/features/factory/internal-transfers.js"></script>
+<script src="js/features/factory/inventory.js"></script>
+<script src="js/features/factory/pr.js"></script>
+<script src="js/features/factory/dashboard.js"></script>
+
+<!-- Store Features -->
+<script src="js/features/store/pos-orders.js"></script>
+<script src="js/features/store/inventory.js"></script>
+<script src="js/features/store/internal-transfers.js"></script>
+<script src="js/features/store/pr.js"></script>
+<script src="js/features/store/dashboard.js"></script>
+
+<!-- Router (must come after all render functions are defined) -->
+<script src="js/core/router.js"></script>
+
+<!-- App Init (must come last) -->
+<script src="js/app.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,59 @@
+/* ─── Base — Reset, Utilities, Typography ───────────────────────────────────
+   Global reset and utility classes. Requires tokens.css.
+──────────────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; }
+::-webkit-scrollbar-track  { background: var(--bg-2); }
+::-webkit-scrollbar-thumb  { background: var(--border-2); border-radius: 99px; }
+
+/* ── Display Utilities ────────────────────────────────────── */
+.hidden { display: none !important; }
+.flex   { display: flex; }
+.col    { flex-direction: column; }
+.fw     { width: 100%; }
+.p-0    { padding: 0; }
+
+/* ── Flex Utilities ───────────────────────────────────────── */
+.ai-c  { align-items: center; }
+.jc-sb { justify-content: space-between; }
+.jc-c  { justify-content: center; }
+
+/* ── Gap ──────────────────────────────────────────────────── */
+.gap-4  { gap: 4px;  }
+.gap-8  { gap: 8px;  }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.gap-20 { gap: 20px; }
+.gap-24 { gap: 24px; }
+
+/* ── Margin ───────────────────────────────────────────────── */
+.mt-4  { margin-top: 4px;  }
+.mt-8  { margin-top: 8px;  }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+
+/* ── Typography ───────────────────────────────────────────── */
+h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+h2 { font-size: 20px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 600; }
+h4 { font-size: 13px; font-weight: 600; }
+
+.dim   { color: var(--text-dim);   }
+.faint { color: var(--text-faint); }
+.small { font-size: 12px; }

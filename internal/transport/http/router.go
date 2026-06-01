@@ -25,6 +25,9 @@ func NewRouter(
 	batchRepo services.ProductionBatchRepository,
 	sopRepo services.SOPRepository,
 	orchestrator *usecase.OrderPoolingOrchestrator,
+	supplyFacade *usecase.SupplyChainFacade,
+	supplierRepo services.SupplierRepository,
+	eqTypeRepo services.EquipmentTypeRepository,
 ) *Router {
 	engine := gin.New()
 	engine.Use(gin.Logger(), gin.Recovery())
@@ -146,6 +149,57 @@ func NewRouter(
 				orders.PATCH("/:id/status", prodH.UpdateStatus)
 			}
 		}
+
+		// Supply Chain: CapEx / Procurement Flow
+		prH := newPRHandler(supplyFacade.PR)
+		prs := v1.Group("/prs")
+		{
+			prs.POST("", prH.Submit)
+			prs.GET("", prH.List)
+			prs.GET("/:id", prH.GetByID)
+			prs.PATCH("/:id/approve", prH.Approve)
+			prs.PATCH("/:id/reject", prH.Reject)
+		}
+
+		puroH := newPurOHandler(supplyFacade.PurO)
+		puros := v1.Group("/puros")
+		{
+			puros.POST("", puroH.Create)
+			puros.GET("", puroH.List)
+			puros.GET("/:id", puroH.GetByID)
+			puros.PATCH("/:id/ship", puroH.MarkShipped)
+		}
+
+		grH := newGRHandler(supplyFacade.GR)
+		grs := v1.Group("/grs")
+		{
+			grs.POST("", grH.ConfirmPurO)
+			grs.GET("/:id", grH.GetByID)
+		}
+
+		invH := newInvoiceHandler(supplyFacade.Invoice)
+		invoices := v1.Group("/invoices")
+		{
+			invoices.POST("", invH.Record)
+			invoices.GET("/:id", invH.GetByID)
+			invoices.POST("/:id/3way-match", invH.Match3Way)
+		}
+
+		assetH := newAssetHandler(supplyFacade.Asset)
+		assets := v1.Group("/assets")
+		{
+			assets.GET("", assetH.List)
+			assets.GET("/:id", assetH.GetByID)
+			assets.POST("/:id/register-machine", assetH.RegisterMachine)
+			assets.PATCH("/:id/status", assetH.SyncStatus)
+		}
+
+		supplierH := newSupplierHandler(supplierRepo)
+		v1.GET("/suppliers", supplierH.List)
+		v1.POST("/suppliers", supplierH.Create)
+
+		eqTypeH := newEquipmentTypeHandler(eqTypeRepo)
+		v1.GET("/equipment-types", eqTypeH.List)
 	}
 
 	return &Router{engine: engine}

@@ -116,7 +116,10 @@ func (r *prRepository) FindByNode(ctx context.Context, nodeID string) ([]*models
 }
 
 func (r *prRepository) FindPendingByOrg(ctx context.Context, orgID string) ([]*models.PurchaseRequisition, error) {
-	cur, err := r.col.Find(ctx, bson.M{"org_id": orgID, "status": models.PRPendingHQApproval})
+	cur, err := r.col.Find(ctx, bson.M{
+		"org_id": orgID,
+		"status": bson.M{"$in": []models.PRStatus{models.PRPendingHQApproval, models.PRApproved}},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("prRepository.FindPendingByOrg: %w", err)
 	}

@@ -49,9 +49,9 @@ type GoodsReceiptInput struct {
 
 // GRLineInput is a single item received in a GoodsReceipt.
 type GRLineInput struct {
-	ItemID      string
-	QtyExpected float64 // Base units expected (from GI)
-	QtyReceived float64 // Base units actually received (may be less due to transit damage)
+	ItemID      string  `json:"item_id"`
+	QtyExpected float64 `json:"qty_expected"` // Base units expected (from GI)
+	QtyReceived float64 `json:"qty_received"` // Base units actually received (may be less due to transit damage)
 }
 
 // ── Interface ─────────────────────────────────────────────────────────────────
