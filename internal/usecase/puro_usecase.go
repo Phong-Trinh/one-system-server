@@ -288,8 +288,8 @@ func (uc *purOUseCase) SettlePayment(ctx context.Context, purOID, invoiceID, grI
 	if err != nil {
 		return nil, err
 	}
-	if purO.Status != models.PurchaseOrderShipped {
-		return nil, fmt.Errorf("po: SettlePayment: PO %s must be SHIPPED before settling (current: %s)", purOID, purO.Status)
+	if purO.Status != models.PurchaseOrderDelivered {
+		return nil, fmt.Errorf("po: SettlePayment: PO %s must be DELIVERED before settling (current: %s)", purOID, purO.Status)
 	}
 
 	now := time.Now()

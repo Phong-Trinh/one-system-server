@@ -1,6 +1,6 @@
 /* ─── HQ / Assets ────────────────────────────────────────────────────────────
    Asset Registry for CapEx equipment.
-   Depends on: helpers.js, mock-data.js, toast.js, router.js, modal.js.
+   Depends on: helpers.js, toast.js, router.js, modal.js, api.js.
 ──────────────────────────────────────────────────────────────────────────── */
 
 async function renderHQAssets() {
@@ -43,20 +43,20 @@ async function renderHQAssets() {
                   <td><code>${ast.id.split('-')[0]}</code></td>
                   <td>${eqName}</td>
                   <td><span class="badge ${ast.node_id === 'FACTORY' ? 'badge-fac' : 'badge-sto'}">${ast.node_id}</span></td>
-                  <td class="num">${ast.acquisition_cost ? fmt(ast.acquisition_cost) : '<span class="faint">—</span>'}</td>
+                  <td class="num">${ast.acquisition_cost ? ast.acquisition_cost.toLocaleString() + ' ₫' : '<span class="faint">—</span>'}</td>
                   <td>${ast.linked_pr_id ? `<code>${ast.linked_pr_id.split('-')[0]}</code>` : '<span class="faint">—</span>'}</td>
                   <td>${ast.linked_puro_id ? `<code>${ast.linked_puro_id.split('-')[0]}</code>` : '<span class="faint">—</span>'}</td>
                   <td>${ast.linked_machine_id ? `<code>${ast.linked_machine_id}</code>` : '<span class="faint">—</span>'}</td>
                   <td>${statusBadge(ast.status)}</td>
                   <td>
-                    ${ast.status === 'PENDING_REGISTRATION'
-                      ? `<button class="btn btn-primary btn-sm" onclick="alert('Register machine not fully implemented in UI')">Register Machine</button>`
-                      : ''}
                     ${ast.status === 'IN_USE'
                       ? `<button class="btn btn-outline btn-sm" onclick="syncAssetStatus('${ast.id}', 'UNDER_MAINTENANCE')">Mark Maintenance</button>`
                       : ''}
                     ${ast.status === 'UNDER_MAINTENANCE'
                       ? `<button class="btn btn-outline btn-sm" onclick="syncAssetStatus('${ast.id}', 'IN_USE')">Return to Service</button>`
+                      : ''}
+                    ${ast.status === 'DECOMMISSIONED'
+                      ? `<span class="faint">Decommissioned</span>`
                       : ''}
                   </td>
                 </tr>
@@ -69,7 +69,7 @@ async function renderHQAssets() {
   `;
 }
 
-/* ── Actions ─────────────────────────────────────────────── */
+/* ── Sync Status ──────────────────────────────────────────────────────────── */
 
 async function syncAssetStatus(assetId, newStatus) {
   try {

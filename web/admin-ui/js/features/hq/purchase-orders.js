@@ -85,6 +85,9 @@ async function renderHQPurchaseOrders() {
                     ${po.status === 'CONFIRMED'
         ? `<button class="btn btn-outline btn-sm" onclick="markShipped('${po.id}')">Mark Shipped</button>`
         : ''}
+                    ${po.status === 'DELIVERED'
+        ? `<button class="btn btn-primary btn-sm" onclick="openRecordInvoiceModal('${po.id}')">🧾 Record Invoice</button>`
+        : ''}
                     ${(po.status === 'CONFIRMED' || po.status === 'SHIPPED') && po.trigger_type === 'PR_TRIGGERED'
         ? `<button class="btn btn-ghost btn-sm" onclick="cancelAndPivotPO('${po.id}')" style="color:var(--red)">Cancel</button>`
         : ''}

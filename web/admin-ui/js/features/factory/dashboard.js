@@ -105,7 +105,7 @@ async function renderFacDashboard() {
 
 /* ── Actions ─────────────────────────────────────────────── */
 
-let currentReceivingPO = null;
+var currentReceivingPO = null;
 
 async function openRecordGRModal(poId) {
   try {

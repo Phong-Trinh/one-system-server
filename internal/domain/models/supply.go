@@ -156,6 +156,8 @@ const (
 	PurchaseOrderConfirmed PurchaseOrderStatus = "CONFIRMED"
 	// PurchaseOrderShipped — supplier has dispatched goods to the destination node.
 	PurchaseOrderShipped PurchaseOrderStatus = "SHIPPED"
+	// PurchaseOrderDelivered - goods have been received by the destination node, waiting for financial settlement.
+	PurchaseOrderDelivered PurchaseOrderStatus = "DELIVERED"
 	// PurchaseOrderCompleted — GoodsReceipt confirmed + 3-Way Matching done; supplier payment authorized.
 	PurchaseOrderCompleted PurchaseOrderStatus = "COMPLETED"
 	// PurchaseOrderCancelled — order was cancelled.

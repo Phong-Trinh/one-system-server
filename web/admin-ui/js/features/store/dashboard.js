@@ -73,7 +73,7 @@ async function renderStoDashboard() {
 
 /* ── Actions ─────────────────────────────────────────────── */
 
-let currentReceivingPO = null;
+var currentReceivingPO = null;
 
 async function openRecordGRModal(poId) {
   try {

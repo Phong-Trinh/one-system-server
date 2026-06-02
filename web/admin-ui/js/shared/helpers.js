@@ -25,6 +25,7 @@ function statusBadge(s) {
     'QUEUED':              'badge-amber',
     'CONFIRMED':           'badge-purple',
     'SHIPPED':             'badge-purple',
+    'DELIVERED':           'badge-purple',
     'OPEN':                'badge-amber',
     'CANCELLED':           'badge-red',
     'REJECTED':            'badge-red',

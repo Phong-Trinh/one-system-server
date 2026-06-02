@@ -19,7 +19,7 @@ func newInvoiceHandler(svc usecase.InvoiceUseCase) *InvoiceHandler {
 func (h *InvoiceHandler) Record(c *gin.Context) {
 	var req struct {
 		OrgID         string                     `json:"org_id"`
-		PurOID        string                     `json:"puro_id"`
+		PurOID        string                     `json:"purchase_order_id"`
 		SupplierID    string                     `json:"supplier_id"`
 		InvoiceNumber string                     `json:"invoice_number"`
 		TotalAmount   float64                    `json:"total_amount"`

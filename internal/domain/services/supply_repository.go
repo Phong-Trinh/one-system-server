@@ -118,6 +118,7 @@ type GoodsIssueLineRepository interface {
 type GoodsReceiptRepository interface {
 	Create(ctx context.Context, gr *models.GoodsReceipt) error
 	FindByID(ctx context.Context, id string) (*models.GoodsReceipt, error)
+	FindByRef(ctx context.Context, refType models.GoodsReceiptRefType, refID string) ([]*models.GoodsReceipt, error)
 	UpdateStatus(ctx context.Context, id string, status models.GoodsReceiptStatus) error
 }
 

@@ -257,6 +257,24 @@ func (r *grRepository) FindByID(ctx context.Context, id string) (*models.GoodsRe
 	return docToGR(&doc), nil
 }
 
+func (r *grRepository) FindByRef(ctx context.Context, refType models.GoodsReceiptRefType, refID string) ([]*models.GoodsReceipt, error) {
+	cur, err := r.col.Find(ctx, bson.M{"ref_type": refType, "ref_id": refID})
+	if err != nil {
+		return nil, fmt.Errorf("grRepository.FindByRef: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var grs []*models.GoodsReceipt
+	for cur.Next(ctx) {
+		var doc goodsReceiptDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		grs = append(grs, docToGR(&doc))
+	}
+	return grs, cur.Err()
+}
+
 func (r *grRepository) UpdateStatus(ctx context.Context, id string, status models.GoodsReceiptStatus) error {
 	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}}
 	if status == models.GoodsReceiptConfirmed || status == models.GoodsReceiptDiscrepancy {

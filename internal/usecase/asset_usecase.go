@@ -108,17 +108,40 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 	}
 
 	var equipmentTypeID string
+	var maxCapacity float64
 	for _, l := range prLines {
 		if l.EquipmentTypeID != nil {
 			equipmentTypeID = *l.EquipmentTypeID
+			if l.ExpectedCapacity != nil {
+				maxCapacity = *l.ExpectedCapacity
+			}
 			break
 		}
 	}
 	if equipmentTypeID == "" {
 		return nil, fmt.Errorf("asset: AutoCreateAsset: no EquipmentTypeID found on PR %s lines", *purO.PRID)
 	}
+	if maxCapacity <= 0 {
+		return nil, fmt.Errorf("asset: AutoCreateAsset: PR %s has no expected_capacity — cannot auto-register machine", *purO.PRID)
+	}
 
 	now := time.Now()
+
+	// System auto-generates the machine ID. Clients never assign machine IDs for CapEx assets.
+	machineID := "MACH-" + uuid.NewString()[:8]
+	machine := &models.Machine{
+		ID:              machineID,
+		EquipmentTypeID: equipmentTypeID,
+		NodeID:          purO.DeliveryToNodeID,
+		MaxCapacity:     maxCapacity,
+		Status:          models.MachineIdle,
+		LinkedAssetID:   nil, // back-linked after asset is persisted
+	}
+	if err := uc.machineRepo.Create(ctx, machine); err != nil {
+		return nil, fmt.Errorf("asset: AutoCreateAsset: create machine: %w", err)
+	}
+
+	// Asset starts as IN_USE — it's already physically delivered and the machine is live.
 	asset := &models.Asset{
 		ID:               uuid.NewString(),
 		OrgID:            purO.OrgID,
@@ -127,22 +150,23 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 		LinkedPRID:       *purO.PRID,
 		LinkedPurOID:     purOID,
 		LinkedGRID:       grID,
-		LinkedMachineID:  nil, // Set by RegisterAsMachine
+		LinkedMachineID:  &machineID,
 		AcquisitionDate:  gr.ReceivedAt.Truncate(24 * time.Hour),
-		Status:           models.AssetPendingRegistration,
-		Depreciation:     models.DepreciationStraightLine, // Default; configurable later
-		UsefulLifeYears:  5,                                // Default; configurable later
-		CurrentBookValue: 0,                                // Set after acquisition cost is known
+		Status:           models.AssetInUse,
+		Depreciation:     models.DepreciationStraightLine,
+		UsefulLifeYears:  5,
+		CurrentBookValue: 0,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
-
-	// AcquisitionCost is derived from PO total. We compute it from PO lines.
-	// For simplicity, we store 0 here and let the infrastructure layer compute from PO lines.
-	// (This is a placeholder — in a full implementation, sum PO line qty × unitPrice.)
-
 	if err := uc.assetRepo.Create(ctx, asset); err != nil {
-		return nil, fmt.Errorf("asset: AutoCreateAsset: persist: %w", err)
+		return nil, fmt.Errorf("asset: AutoCreateAsset: persist asset: %w", err)
+	}
+
+	// Back-link machine → asset.
+	machine.LinkedAssetID = &asset.ID
+	if err := uc.machineRepo.Update(ctx, machine); err != nil {
+		return nil, fmt.Errorf("asset: AutoCreateAsset: link machine to asset: %w", err)
 	}
 
 	return asset, nil

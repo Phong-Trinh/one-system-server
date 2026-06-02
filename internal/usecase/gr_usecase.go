@@ -63,6 +63,13 @@ func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receiv
 	if purO.Status != models.PurchaseOrderShipped {
 		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s must be SHIPPED to receive (current: %s)", purOID, purO.Status)
 	}
+
+	// Prevent duplicate Goods Receipts for the same Purchase Order
+	existingGRs, err := uc.grRepo.FindByRef(ctx, models.GoodsReceiptRefPurO, purOID)
+	if err == nil && len(existingGRs) > 0 {
+		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s already has a Goods Receipt", purOID)
+	}
+
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: at least one line is required")
 	}
@@ -137,6 +144,13 @@ func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receiv
 				return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: create DiscrepancyTicket item %s: %w", l.ItemID, err)
 			}
 		}
+	}
+
+	// Update PurchaseOrder status to DELIVERED
+	purO.Status = models.PurchaseOrderDelivered
+	purO.UpdatedAt = now
+	if err := uc.purORepo.Update(ctx, purO); err != nil {
+		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: update PO status: %w", err)
 	}
 
 	return gr, nil
