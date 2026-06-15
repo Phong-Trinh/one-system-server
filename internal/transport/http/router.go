@@ -28,6 +28,9 @@ func NewRouter(
 	supplyFacade *usecase.SupplyChainFacade,
 	supplierRepo services.SupplierRepository,
 	eqTypeRepo services.EquipmentTypeRepository,
+	orderUC usecase.OrderUseCase,
+	stockRepo services.NodeStockRepository,
+	configRepo services.NodeItemConfigRepository,
 ) *Router {
 	engine := gin.New()
 	engine.Use(gin.Logger(), gin.Recovery())
@@ -125,30 +128,64 @@ func NewRouter(
 		{
 			kds.POST("/batches/:id/confirm-placement", kdsH.ConfirmPlacement)
 			kds.POST("/batches/:id/confirm-completion", kdsH.ConfirmCompletion)
-			kds.GET("/batches", kdsH.ListBatches)   // ?node_id=&status=
-			kds.GET("/pool", kdsH.GetPoolStatus)    // Pool countdown for UI
+			kds.GET("/batches", kdsH.ListBatches)  // ?node_id=&status=
+			kds.GET("/pool", kdsH.GetPoolStatus)   // Pool countdown for UI
 		}
 
-		// Production (BOM, SOP, Orders)
-		prodH := newProductionHandler(productionUC, orchestrator)
+		// Production (BOM, SOP, Production Orders)
+		prodH := newProductionHandler(productionUC, orchestrator, supplyFacade)
 		prod := v1.Group("/production")
 		{
+			prod.GET("/boms", prodH.ListBOMs)
 			prod.POST("/boms", prodH.CreateBOM)
+			prod.GET("/boms/:id", prodH.GetBOMByID)
 			prod.GET("/boms/by-item/:id", prodH.GetFullBOMByItem)
 			prod.PUT("/boms/:id", prodH.UpdateBOM)
 
+			prod.GET("/sops", prodH.ListSOPs)
 			prod.POST("/sops", prodH.CreateSOP)
 			prod.GET("/sops/by-bom/:id", prodH.GetFullSOPByBOM)
 			prod.PUT("/sops/:id", prodH.UpdateSOP)
 
-			orders := prod.Group("/orders")
+			prodOrders := prod.Group("/orders")
 			{
-				orders.POST("", prodH.CreateOrder)
-				orders.GET("", prodH.ListOrders) // ?node_id=
-				orders.GET("/:id", prodH.GetOrder)
-				orders.PATCH("/:id/status", prodH.UpdateStatus)
+				prodOrders.POST("", prodH.CreateOrder)
+				prodOrders.GET("", prodH.ListOrders) // ?node_id=
+				prodOrders.GET("/:id", prodH.GetOrder)
+				prodOrders.PATCH("/:id/status", prodH.UpdateStatus)
 			}
 		}
+
+		// Sale Orders (Store POS — triggers StockOut + ROP)
+		orderH := newOrderHandler(orderUC, "SNAPBITE_ORG", "HQ")
+		saleOrders := v1.Group("/orders")
+		{
+			saleOrders.POST("", orderH.Create)
+			saleOrders.GET("", orderH.List)      // ?node_id=
+			saleOrders.GET("/:id", orderH.GetByID)
+			saleOrders.PATCH("/:id/complete", orderH.Complete)
+			saleOrders.PATCH("/:id/cancel", orderH.Cancel)
+		}
+
+		// Internal Transfer Orders (ITO lifecycle)
+		itoH := newITOHandler(supplyFacade.ITO)
+		itos := v1.Group("/itos")
+		{
+			itos.POST("", itoH.Create)
+			itos.GET("", itoH.List)      // ?node_id=
+			itos.GET("/:id", itoH.GetByID)
+			itos.PATCH("/:id/approve", itoH.Approve)
+			itos.PATCH("/:id/reject", itoH.Reject)
+			itos.POST("/:id/goods-issue", itoH.GoodsIssue)
+			itos.POST("/:id/goods-receipt", itoH.GoodsReceipt)
+		}
+
+		// Inventory (NodeStock + NodeItemConfig)
+		invH := newInventoryHandler(supplyFacade.Inventory, stockRepo, configRepo)
+		v1.GET("/inventory", invH.ListStock)           // ?node_id=
+		v1.POST("/inventory/init", invH.InitStock)
+		v1.GET("/node-item-configs", invH.ListConfigs) // ?node_id=
+		v1.PUT("/node-item-configs", invH.UpsertConfig)
 
 		// Supply Chain: CapEx / Procurement Flow
 		prH := newPRHandler(supplyFacade.PR)
@@ -168,6 +205,8 @@ func NewRouter(
 			puros.GET("", puroH.List)
 			puros.GET("/:id", puroH.GetByID)
 			puros.PATCH("/:id/ship", puroH.MarkShipped)
+			puros.PATCH("/:id/confirm", puroH.Confirm)
+			puros.PATCH("/:id/confirm-draft", puroH.ConfirmDraft)
 		}
 
 		grH := newGRHandler(supplyFacade.GR)
@@ -177,12 +216,12 @@ func NewRouter(
 			grs.GET("/:id", grH.GetByID)
 		}
 
-		invH := newInvoiceHandler(supplyFacade.Invoice)
+		invHandler := newInvoiceHandler(supplyFacade.Invoice)
 		invoices := v1.Group("/invoices")
 		{
-			invoices.POST("", invH.Record)
-			invoices.GET("/:id", invH.GetByID)
-			invoices.POST("/:id/3way-match", invH.Match3Way)
+			invoices.POST("", invHandler.Record)
+			invoices.GET("/:id", invHandler.GetByID)
+			invoices.POST("/:id/3way-match", invHandler.Match3Way)
 		}
 
 		assetH := newAssetHandler(supplyFacade.Asset)

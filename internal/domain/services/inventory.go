@@ -37,6 +37,10 @@ type InventoryService interface {
 	// CheckROP evaluates whether qty_on_hand has breached the reorder point for (nodeID, itemID).
 	// Returns the result without modifying any stock. Useful for explicit manual checks.
 	CheckROP(ctx context.Context, nodeID, itemID string) (*ROPCheckResult, error)
+
+	// GetConfig fetches the NodeItemConfig for a given node and item.
+	// Used by the Facade to run Material Requirements Planning (MRP) and evaluate Sourcing Strategies.
+	GetConfig(ctx context.Context, nodeID, itemID string) (*models.NodeItemConfig, error)
 }
 
 // ROPCheckResult is returned by StockOut and CheckROP to communicate the outcome

@@ -22,6 +22,8 @@ type AllocationUseCase interface {
 	ConfirmPlacement(ctx context.Context, batchID string) error
 	// ConfirmCompletion moves a batch to COMPLETED and triggers dependencies.
 	ConfirmCompletion(ctx context.Context, batchID string) error
+	// SetFacade injects the supply chain facade to break circular dependencies.
+	SetFacade(facade *SupplyChainFacade)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -32,6 +34,7 @@ type allocationUseCase struct {
 	machineRepo services.MachineRepository
 	sopRepo     services.SOPRepository
 	capRepo     services.ItemCapacityConfigRepository // bin-packing config: slot consumption + allow_mix
+	facade      *SupplyChainFacade
 }
 
 func NewAllocationUseCase(
@@ -48,6 +51,10 @@ func NewAllocationUseCase(
 		sopRepo:     sopRepo,
 		capRepo:     capRepo,
 	}
+}
+
+func (uc *allocationUseCase) SetFacade(facade *SupplyChainFacade) {
+	uc.facade = facade
 }
 
 // ── Private Helpers ───────────────────────────────────────────────────────────
@@ -311,7 +318,42 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 // ── ConfirmPlacement ──────────────────────────────────────────────────────────
 
 func (uc *allocationUseCase) ConfirmPlacement(ctx context.Context, batchID string) error {
-	return uc.batchRepo.UpdateStatus(ctx, batchID, models.BatchInProgress)
+	batch, err := uc.batchRepo.FindByID(ctx, batchID)
+	if err != nil || batch == nil {
+		return err
+	}
+
+	if err := uc.batchRepo.UpdateStatus(ctx, batchID, models.BatchInProgress); err != nil {
+		return err
+	}
+
+	// Stock deduct for this specific step's ingredients
+	if uc.facade != nil {
+		step, _ := uc.sopRepo.FindStepByID(ctx, batch.SOPStepID)
+		if step != nil && len(step.IngredientBOMLineIDs) > 0 {
+			po, _ := uc.poRepo.FindByID(ctx, batch.POID)
+			bom, bomLines, _ := uc.facade.GetBOMByItem(ctx, batch.ItemID)
+			if po != nil && bom != nil {
+				// We need a map of line ID to BOMLine
+				lineMap := make(map[string]*models.BOMLine)
+				for _, l := range bomLines {
+					lineMap[l.ID] = l
+				}
+
+				for _, lineID := range step.IngredientBOMLineIDs {
+					if line, ok := lineMap[lineID]; ok {
+						totalIngQty := line.Qty * batch.Qty // Use batch.Qty (it handles split batches)
+						// Use "HQ" as org and hqNodeID context
+						if err := uc.facade.StockOutWithROP(ctx, "SNAPBITE_ORG", "HQ", batch.NodeID, line.ItemID, totalIngQty); err != nil {
+							fmt.Printf("failed to stock out ingredient %s for PO %s batch %s: %v\n", line.ItemID, po.ID, batch.ID, err)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // ── ConfirmCompletion ─────────────────────────────────────────────────────────
@@ -398,6 +440,11 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 	if allSOPCompleted {
 		if err := uc.poRepo.UpdateStatus(ctx, po.ID, models.POCompleted, nil); err != nil {
 			fmt.Printf("failed to mark PO %s completed: %v\n", po.ID, err)
+		} else {
+			// PO Completed! Stock in the final produced item
+			if uc.facade != nil {
+				_ = uc.facade.Inventory.StockIn(ctx, po.NodeID, po.ItemID, po.TargetQty)
+			}
 		}
 	}
 

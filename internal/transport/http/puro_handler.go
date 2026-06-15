@@ -91,3 +91,35 @@ func (h *PurOHandler) MarkShipped(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "PO marked as shipped"})
 }
+
+func (h *PurOHandler) Confirm(c *gin.Context) {
+	id := c.Param("id")
+	// For demo purposes, we'll just use a dummy staff ID
+	staffID := "STAFF_HQ_01"
+	if err := h.puroService.SimpleConfirmPurO(c.Request.Context(), id, staffID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "PO confirmed successfully"})
+}
+
+func (h *PurOHandler) ConfirmDraft(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		SupplierID string                  `json:"supplier_id"`
+		Lines      []usecase.PurOLineInput `json:"lines"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// For demo purposes, we'll just use a dummy staff ID
+	staffID := "STAFF_HQ_01"
+
+	if err := h.puroService.ConfirmDraftPurO(c.Request.Context(), id, req.SupplierID, staffID, req.Lines); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Draft PO confirmed successfully"})
+}

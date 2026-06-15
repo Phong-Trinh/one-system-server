@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,10 +13,11 @@ import (
 type productionHandler struct {
 	uc           usecase.ProductionUseCase
 	orchestrator *usecase.OrderPoolingOrchestrator // Auto-enqueues new POs into the pool
+	facade       *usecase.SupplyChainFacade        // Used for MRP logic
 }
 
-func newProductionHandler(uc usecase.ProductionUseCase, orchestrator *usecase.OrderPoolingOrchestrator) *productionHandler {
-	return &productionHandler{uc: uc, orchestrator: orchestrator}
+func newProductionHandler(uc usecase.ProductionUseCase, orchestrator *usecase.OrderPoolingOrchestrator, facade *usecase.SupplyChainFacade) *productionHandler {
+	return &productionHandler{uc: uc, orchestrator: orchestrator, facade: facade}
 }
 
 // POST /api/v1/production/orders
@@ -40,6 +42,14 @@ func (h *productionHandler) CreateOrder(c *gin.Context) {
 	// No manual "Decompose" action needed from the UI.
 	if h.orchestrator != nil {
 		h.orchestrator.Enqueue(po)
+	}
+
+	// Trigger MRP (Material Requirements Planning) logic to auto-replenish any shortages.
+	// We use "SNAPBITE_ORG" and "HQ" as the organizational context.
+	if h.facade != nil {
+		// Use a detached context because the request context might be cancelled after the HTTP response.
+		// In a real app, use a proper background worker or task queue.
+		go h.facade.RunMRPForProductionOrder(context.Background(), "SNAPBITE_ORG", "HQ", po)
 	}
 
 	c.JSON(http.StatusCreated, po)
@@ -194,3 +204,38 @@ func (h *productionHandler) UpdateSOP(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// GET /api/v1/production/boms
+func (h *productionHandler) ListBOMs(c *gin.Context) {
+	boms, err := h.uc.ListBOMs(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, boms)
+}
+
+// GET /api/v1/production/boms/:id
+func (h *productionHandler) GetBOMByID(c *gin.Context) {
+	bom, lines, err := h.uc.GetBOMByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if bom == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "BOM not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"bom": bom, "lines": lines})
+}
+
+// GET /api/v1/production/sops
+func (h *productionHandler) ListSOPs(c *gin.Context) {
+	sops, err := h.uc.ListSOPs(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, sops)
+}
+

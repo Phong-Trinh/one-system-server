@@ -80,6 +80,23 @@ func (r *nodeStockRepository) Upsert(ctx context.Context, stock *models.NodeStoc
 	return nil
 }
 
+func (r *nodeStockRepository) ListByNode(ctx context.Context, nodeID string) ([]*models.NodeStock, error) {
+	cur, err := r.col.Find(ctx, bson.M{"node_id": nodeID})
+	if err != nil {
+		return nil, fmt.Errorf("nodeStockRepository.ListByNode: %w", err)
+	}
+	defer cur.Close(ctx)
+	var results []*models.NodeStock
+	for cur.Next(ctx) {
+		var doc nodeStockDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		results = append(results, docToStock(&doc))
+	}
+	return results, cur.Err()
+}
+
 // ── NodeItemConfig ────────────────────────────────────────────────────────────
 
 type nodeItemConfigDoc struct {
@@ -165,4 +182,21 @@ func (r *nodeItemConfigRepository) Upsert(ctx context.Context, cfg *models.NodeI
 		return fmt.Errorf("nodeItemConfigRepository.Upsert: %w", err)
 	}
 	return nil
+}
+
+func (r *nodeItemConfigRepository) ListByNode(ctx context.Context, nodeID string) ([]*models.NodeItemConfig, error) {
+	cur, err := r.col.Find(ctx, bson.M{"node_id": nodeID})
+	if err != nil {
+		return nil, fmt.Errorf("nodeItemConfigRepository.ListByNode: %w", err)
+	}
+	defer cur.Close(ctx)
+	var results []*models.NodeItemConfig
+	for cur.Next(ctx) {
+		var doc nodeItemConfigDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		results = append(results, docToConfig(&doc))
+	}
+	return results, cur.Err()
 }

@@ -21,13 +21,13 @@ flowchart TD
 
     S_Strat -->|EXTERNAL_PROCUREMENT| S_Draft["System creates\nDraft PurO on HQ Dashboard"]
     S_Draft --> HQ_OK1["HQ confirms PurO\n(delivery_to = S)"]
-    HQ_OK1 --> Sup1["Supplier ships directly to S"]
+    HQ_OK1 --> Sup1["Supplier ships → HQ marks\nPurO as SHIPPED"]
     Sup1 --> S_GR2["S: Goods Receipt (GR)\n→ Stock In at S"]
     S_GR2 --> Match1["HQ: 3-Way Matching\n(PurO + Invoice + GR)"]
 
     F_ROP(["F hits ROP\n(C_prod + C_transfer)"]) --> F_Draft["System creates\nDraft PurO on HQ Dashboard"]
     F_Draft --> HQ_OK2["HQ confirms PurO\n(delivery_to = F)"]
-    HQ_OK2 --> Sup2["Supplier ships directly to F"]
+    HQ_OK2 --> Sup2["Supplier ships → HQ marks\nPurO as SHIPPED"]
     Sup2 --> F_GR["F: Goods Receipt (GR)\n→ Stock In at F"]
     F_GR --> Match2["HQ: 3-Way Matching\n(PurO + Invoice + GR)"]
 
@@ -102,11 +102,31 @@ The system strictly divides supply chain operations into three distinct flows ba
   1. **PR-Triggered (Pull)**: A Store or Factory submits an approved `PR` to HQ for CapEx or exceptional purchases. HQ reviews and converts it into a `PurO`, with `delivery_to` = the requesting node.
   2. **Auto-Draft (System Push)**: When any node (Factory **or** Store) with `sourcing_strategy = EXTERNAL_PROCUREMENT` hits its ROP, the system automatically generates a **Draft PurO** on the HQ Dashboard. HQ reviews and confirms it. The `delivery_to` is the triggering node (Factory or Store).
 - **Authority**: ONLY HQ can issue a `PurO`. Stores and Factories **never** contact or buy directly from suppliers.
-- **Logistics Flow**:
-  1. HQ issues `PurO` to Supplier, specifying `delivery_to` = destination node (Factory or Store).
-  2. Supplier delivers goods **directly to the destination node** (no transit through HQ).
-  3. Destination node creates a `Goods Receipt (GR)` linked directly to the `PurO`.
-  4. **3-Way Matching**: HQ validates `PurO` + `Supplier Invoice` + `Goods Receipt` before authorizing supplier payment.
+- **PurchaseOrder Status Lifecycle**:
+
+  | Status | Triggered By | Meaning |
+  |---|---|---|
+  | `DRAFT` | System (ROP engine) | Auto-generated when node hits ROP under `EXTERNAL_PROCUREMENT` strategy. Supplier and prices not yet set. |
+  | `CONFIRMED` | HQ (manual) | HQ reviewed the draft, attached supplier and negotiated prices, formally sent PO to supplier. |
+  | `SHIPPED` | HQ (manual) | HQ received notification from supplier that goods have left their warehouse and are in transit to the destination node. |
+  | `DELIVERED` | System (on GR confirmation) | Destination node confirmed receipt of physical goods via `GoodsReceipt`. **Triggers Stock In.** |
+  | `COMPLETED` | System (on 3-Way Match) | HQ validated `PurO + Invoice + GR`. Supplier payment is authorized. |
+  | `CANCELLED` | HQ (manual) | Order cancelled before fulfillment (e.g., supplier breach). |
+
+- **Logistics Flow (Standard — Post-Delivery Payment)**:
+  1. HQ issues `PurO` to Supplier (`CONFIRMED`), specifying `delivery_to` = destination node (Factory or Store).
+  2. Supplier notifies HQ that goods have been dispatched. **HQ marks PurO as `SHIPPED`** via the dashboard. This is a manual HQ action — the system does not auto-detect shipments.
+  3. Goods arrive at the destination node. Node creates a `Goods Receipt (GR)` linked to the `PurO`. PurO transitions to `DELIVERED`.
+  4. **3-Way Matching**: HQ validates `PurO` + `Supplier Invoice` + `Goods Receipt`. PurO transitions to `COMPLETED` and supplier payment is authorized.
+
+- **Logistics Flow (Prepayment Variant — Supplier Requires Payment Before Shipping)**:
+  1. HQ issues `PurO` to Supplier (`CONFIRMED`).
+  2. Supplier issues Invoice immediately (before shipping). HQ performs **2-Way Match** (`PurO` + `Invoice`) and authorizes prepayment.
+  3. Once payment is confirmed, Supplier dispatches goods. **HQ marks PurO as `SHIPPED`.**
+  4. Goods arrive. Node creates `GoodsReceipt`. PurO transitions to `DELIVERED`.
+  5. HQ links the GR to the prepaid Invoice, completing the audit trail. PurO transitions to `COMPLETED`.
+
+> **Why `SHIPPED` is a required gate:** The system enforces that a `Goods Receipt` can only be created against a `SHIPPED` PurchaseOrder. This prevents a node from prematurely logging a receipt before goods have physically left the supplier's warehouse, ensuring data integrity in the inventory ledger.
 
 ### 1.4 B2B Sales Order (Wholesale Fulfillment)
 *Goal: Fulfilling large wholesale orders to external customers directly from the Factory.*

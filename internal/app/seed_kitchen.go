@@ -51,15 +51,21 @@ func SeedKitchenData(
 
 	// ── 2. Machines ───────────────────────────────────────────────────────────
 	machines := []models.Machine{
-		{ID: "M1_BEP_NUONG", EquipmentTypeID: "ST_BEP_NUONG", NodeID: nodeID, MaxCapacity: 8, Status: models.MachineIdle},
-		{ID: "M2_MAY_CHIEN_1", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: nodeID, MaxCapacity: 2, Status: models.MachineIdle},
-		{ID: "M3_MAY_CHIEN_2", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: nodeID, MaxCapacity: 2, Status: models.MachineIdle},
-		{ID: "M4_BAN_RAP", EquipmentTypeID: "ST_BAN_RAP", NodeID: nodeID, MaxCapacity: 10, Status: models.MachineIdle},
+		// CUA_HANG_01 Machines
+		{ID: "M1_BEP_NUONG", EquipmentTypeID: "ST_BEP_NUONG", NodeID: "CUA_HANG_01", MaxCapacity: 8, Status: models.MachineIdle},
+		{ID: "M2_MAY_CHIEN_1", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: "CUA_HANG_01", MaxCapacity: 2, Status: models.MachineIdle},
+		{ID: "M3_MAY_CHIEN_2", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: "CUA_HANG_01", MaxCapacity: 2, Status: models.MachineIdle},
+		{ID: "M4_BAN_RAP", EquipmentTypeID: "ST_BAN_RAP", NodeID: "CUA_HANG_01", MaxCapacity: 10, Status: models.MachineIdle},
+		// FACTORY Machines
+		{ID: "F_M1_BEP_NUONG", EquipmentTypeID: "ST_BEP_NUONG", NodeID: "FACTORY", MaxCapacity: 80, Status: models.MachineIdle},
+		{ID: "F_M2_MAY_CHIEN_1", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: "FACTORY", MaxCapacity: 20, Status: models.MachineIdle},
+		{ID: "F_M3_MAY_CHIEN_2", EquipmentTypeID: "ST_MAY_CHIEN", NodeID: "FACTORY", MaxCapacity: 20, Status: models.MachineIdle},
+		{ID: "F_M4_BAN_RAP", EquipmentTypeID: "ST_BAN_RAP", NodeID: "FACTORY", MaxCapacity: 100, Status: models.MachineIdle},
 	}
 	for _, m := range machines {
 		_ = machineRepo.Delete(ctx, m.ID)
-		mc := m
-		if err := machineRepo.Create(ctx, &mc); err != nil {
+		mCopy := m
+		if err := machineRepo.Create(ctx, &mCopy); err != nil {
 			return fmt.Errorf("seed machine %s: %w", m.ID, err)
 		}
 		log.Info().Str("id", m.ID).Msg("[Seed] Created Machine")
@@ -137,14 +143,14 @@ func SeedKitchenData(
 				itemID string
 				qty    float64
 			}{
-				{"ITEM_BO_TUOI", 150},
+				{"ITEM_BIT_TET", 1},
 				{"ITEM_BANH_MI", 1},
 				{"ITEM_HANH_TAY", 30},
 			},
 			steps: []models.SOPStep{
-				{ID: "STEP_HB_NUONG_BO", Description: "Nướng Bò", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 20, DependsOn: []string{}},
-				{ID: "STEP_HB_NUONG_BANH", Description: "Nướng Bánh Mì", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 10, DependsOn: []string{}},
-				{ID: "STEP_HB_CHIEN_HANH", Description: "Chiên Hành", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 15, DependsOn: []string{}},
+				{ID: "STEP_HB_NUONG_BO", Description: "Nướng Bò", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 20, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_BO_LINE_1"}},
+				{ID: "STEP_HB_NUONG_BANH", Description: "Nướng Bánh Mì", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 10, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_BO_LINE_2"}},
+				{ID: "STEP_HB_CHIEN_HANH", Description: "Chiên Hành", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 15, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_BO_LINE_3"}},
 				{ID: "STEP_HB_SAP_XEP", Description: "Sắp Xếp Món", EquipmentTypeID: equipPtr("ST_BAN_RAP"), Duration: 10, DependsOn: []string{"STEP_HB_NUONG_BO", "STEP_HB_NUONG_BANH", "STEP_HB_CHIEN_HANH"}},
 			},
 		},
@@ -160,9 +166,9 @@ func SeedKitchenData(
 				{"ITEM_HANH_TAY", 30},
 			},
 			steps: []models.SOPStep{
-				{ID: "STEP_HG_NUONG_GA", Description: "Nướng Gà", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 18, DependsOn: []string{}},
-				{ID: "STEP_HG_NUONG_BANH", Description: "Nướng Bánh Mì", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 10, DependsOn: []string{}},
-				{ID: "STEP_HG_CHIEN_HANH", Description: "Chiên Hành", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 15, DependsOn: []string{}},
+				{ID: "STEP_HG_NUONG_GA", Description: "Nướng Gà", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 18, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_GA_LINE_1"}}, // ITEM_GA_TUOI
+				{ID: "STEP_HG_NUONG_BANH", Description: "Nướng Bánh Mì", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 10, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_GA_LINE_2"}}, // ITEM_BANH_MI
+				{ID: "STEP_HG_CHIEN_HANH", Description: "Chiên Hành", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 15, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_HAMBURGER_GA_LINE_3"}}, // ITEM_HANH_TAY
 				{ID: "STEP_HG_SAP_XEP", Description: "Sắp Xếp Món", EquipmentTypeID: equipPtr("ST_BAN_RAP"), Duration: 10, DependsOn: []string{"STEP_HG_NUONG_GA", "STEP_HG_NUONG_BANH", "STEP_HG_CHIEN_HANH"}},
 			},
 		},
@@ -176,7 +182,7 @@ func SeedKitchenData(
 				{"ITEM_BO_TUOI", 250},
 			},
 			steps: []models.SOPStep{
-				{ID: "STEP_BT_NUONG", Description: "Nướng Bít Tết", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 25, DependsOn: []string{}},
+				{ID: "STEP_BT_NUONG", Description: "Nướng Bít Tết", EquipmentTypeID: equipPtr("ST_BEP_NUONG"), Duration: 25, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_BIT_TET_LINE_1"}}, // ITEM_BO_TUOI
 				{ID: "STEP_BT_SAP_XEP", Description: "Sắp Xếp Món", EquipmentTypeID: equipPtr("ST_BAN_RAP"), Duration: 12, DependsOn: []string{"STEP_BT_NUONG"}},
 			},
 		},
@@ -190,7 +196,7 @@ func SeedKitchenData(
 				{"ITEM_KHOAI_TAY", 200},
 			},
 			steps: []models.SOPStep{
-				{ID: "STEP_KC_CHIEN", Description: "Chiên Khoai Tây", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 20, DependsOn: []string{}},
+				{ID: "STEP_KC_CHIEN", Description: "Chiên Khoai Tây", EquipmentTypeID: equipPtr("ST_MAY_CHIEN"), Duration: 20, DependsOn: []string{}, IngredientBOMLineIDs: []string{"BOM_KHOAI_TAY_CHIEN_LINE_1"}}, // ITEM_KHOAI_TAY
 				{ID: "STEP_KC_SAP_XEP", Description: "Sắp Xếp Món", EquipmentTypeID: equipPtr("ST_BAN_RAP"), Duration: 8, DependsOn: []string{"STEP_KC_CHIEN"}},
 			},
 		},

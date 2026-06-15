@@ -177,6 +177,15 @@ func (m *mockGRRepo) UpdateStatus(ctx context.Context, id string, status models.
 	}
 	return fmt.Errorf("gr not found")
 }
+func (m *mockGRRepo) FindByRef(ctx context.Context, refType models.GoodsReceiptRefType, refID string) ([]*models.GoodsReceipt, error) {
+	var res []*models.GoodsReceipt
+	for _, gr := range m.grs {
+		if gr.RefType == refType && gr.RefID == refID {
+			res = append(res, gr)
+		}
+	}
+	return res, nil
+}
 
 type mockGRLineRepo struct {
 	lines map[string][]*models.GoodsReceiptLine
@@ -444,6 +453,15 @@ type mockNodeStockRepo struct {
 func (m *mockNodeStockRepo) Get(ctx context.Context, nodeID, itemID string) (*models.NodeStock, error) {
 	return m.stock[nodeID+"_"+itemID], nil
 }
+func (m *mockNodeStockRepo) ListByNode(ctx context.Context, nodeID string) ([]*models.NodeStock, error) {
+	var res []*models.NodeStock
+	for _, s := range m.stock {
+		if s.NodeID == nodeID {
+			res = append(res, s)
+		}
+	}
+	return res, nil
+}
 func (m *mockNodeStockRepo) Upsert(ctx context.Context, stock *models.NodeStock) error {
 	m.stock[stock.NodeID+"_"+stock.ItemID] = stock
 	return nil
@@ -454,6 +472,15 @@ type mockNodeItemConfigRepo struct {
 }
 func (m *mockNodeItemConfigRepo) Get(ctx context.Context, nodeID, itemID string) (*models.NodeItemConfig, error) {
 	return m.configs[nodeID+"_"+itemID], nil
+}
+func (m *mockNodeItemConfigRepo) ListByNode(ctx context.Context, nodeID string) ([]*models.NodeItemConfig, error) {
+	var res []*models.NodeItemConfig
+	for _, c := range m.configs {
+		if c.NodeID == nodeID {
+			res = append(res, c)
+		}
+	}
+	return res, nil
 }
 func (m *mockNodeItemConfigRepo) Upsert(ctx context.Context, cfg *models.NodeItemConfig) error {
 	m.configs[cfg.NodeID+"_"+cfg.ItemID] = cfg

@@ -24,11 +24,14 @@ type ProductionUseCase interface {
 
 	// BOM & SOP Management
 	CreateBOM(ctx context.Context, outputItemID string, lines []*models.BOMLine) (*models.BOM, error)
+	GetBOMByID(ctx context.Context, bomID string) (*models.BOM, []*models.BOMLine, error)
 	GetFullBOMByItem(ctx context.Context, itemID string) (*models.BOM, []*models.BOMLine, error)
+	ListBOMs(ctx context.Context) ([]*models.BOM, error)
 	UpdateBOM(ctx context.Context, bomID string, lines []*models.BOMLine) error
 
 	CreateSOP(ctx context.Context, bomID string, steps []*models.SOPStep) (*models.SOP, error)
 	GetFullSOPByBOM(ctx context.Context, bomID string) (*models.SOP, []*models.SOPStep, error)
+	ListSOPs(ctx context.Context) ([]*models.SOP, error)
 	UpdateSOP(ctx context.Context, sopID string, steps []*models.SOPStep) error
 }
 
@@ -181,6 +184,18 @@ func (uc *productionUseCase) CreateBOM(ctx context.Context, outputItemID string,
 	return bom, nil
 }
 
+func (uc *productionUseCase) GetBOMByID(ctx context.Context, bomID string) (*models.BOM, []*models.BOMLine, error) {
+	bom, err := uc.bomRepo.FindByID(ctx, bomID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if bom == nil {
+		return nil, nil, fmt.Errorf("BOM %q not found", bomID)
+	}
+	lines, err := uc.bomRepo.ListLines(ctx, bom.ID)
+	return bom, lines, err
+}
+
 func (uc *productionUseCase) GetFullBOMByItem(ctx context.Context, itemID string) (*models.BOM, []*models.BOMLine, error) {
 	boms, err := uc.bomRepo.FindByOutputItem(ctx, itemID)
 	if err != nil || len(boms) == 0 {
@@ -191,6 +206,30 @@ func (uc *productionUseCase) GetFullBOMByItem(ctx context.Context, itemID string
 	bom := boms[len(boms)-1]
 	lines, err := uc.bomRepo.ListLines(ctx, bom.ID)
 	return bom, lines, err
+}
+
+func (uc *productionUseCase) ListBOMs(ctx context.Context) ([]*models.BOM, error) {
+	return uc.bomRepo.FindAll(ctx)
+}
+
+func (uc *productionUseCase) ListSOPs(ctx context.Context) ([]*models.SOP, error) {
+	// Collect all BOMs then get their SOPs — SOPRepo doesn't have FindAll yet.
+	// This is a simple implementation; can be optimised with a direct FindAll on SOPs.
+	boms, err := uc.bomRepo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var sops []*models.SOP
+	for _, bom := range boms {
+		sop, err := uc.sopRepo.FindByBOMID(ctx, bom.ID)
+		if err != nil {
+			continue
+		}
+		if sop != nil {
+			sops = append(sops, sop)
+		}
+	}
+	return sops, nil
 }
 
 func (uc *productionUseCase) UpdateBOM(ctx context.Context, bomID string, lines []*models.BOMLine) error {

@@ -7,6 +7,7 @@ let state = {
   currentUser: null,
   node: null,   // 'HQ' | 'FACTORY' | 'STORE'
   page: null,   // current page id string
+  orgId: 'SNAPBITE_ORG',
 };
 
 // Define missing mock data globals to prevent ReferenceErrors in legacy/unmigrated views

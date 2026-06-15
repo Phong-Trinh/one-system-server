@@ -129,11 +129,22 @@ func New(ctx context.Context) (*App, error) {
 	}
 	supplyFacade := usecase.NewSupplyChainFacade(supplyRepos)
 
+	// ── Order UseCase (Sale Orders at Store — triggers stock-out + ROP) ───────
+	orderRepo := mongorepo.NewOrderRepository(mongoClient, dbName)
+	orderUC := usecase.NewOrderUseCase(orderRepo, supplyFacade)
+
+	// ── Late-bind ProductionUseCase into SupplyChainFacade ────────────────────
+	// This enables auto-PO creation at Factory when Store ITO is triggered.
+	supplyFacade.SetProductionUseCase(productionUC, orchestrator)
+	// Wire the facade to the allocationUC so it can do stock deduction
+	allocationUC.SetFacade(supplyFacade)
+
 	// ── Transport (HTTP) ──────────────────────────────────────────────────────
 	router := transport.NewRouter(
-		orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC, 
-		batchRepo, sopRepo, orchestrator, 
+		orgUC, nodeUC, stationTypeUC, machineUC, staffUC, productionUC, itemUC, allocationUC,
+		batchRepo, sopRepo, orchestrator,
 		supplyFacade, supplierRepo, eqTypeRepo,
+		orderUC, stockRepo, nodeItemConfigRepo,
 	)
 
 	a := &App{router: router, mongoClient: mongoClient}

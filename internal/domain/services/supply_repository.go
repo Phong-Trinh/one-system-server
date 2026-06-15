@@ -15,6 +15,9 @@ type NodeStockRepository interface {
 	// Returns nil, nil when no stock record exists yet.
 	Get(ctx context.Context, nodeID, itemID string) (*models.NodeStock, error)
 
+	// ListByNode returns all NodeStock records for a given node.
+	ListByNode(ctx context.Context, nodeID string) ([]*models.NodeStock, error)
+
 	// Upsert creates or atomically overwrites the NodeStock record.
 	// Used by StockIn, StockOut, and InitStock operations.
 	Upsert(ctx context.Context, stock *models.NodeStock) error
@@ -27,6 +30,9 @@ type NodeItemConfigRepository interface {
 	// Get returns the config for (nodeID, itemID).
 	// Returns nil, nil when no config exists.
 	Get(ctx context.Context, nodeID, itemID string) (*models.NodeItemConfig, error)
+
+	// ListByNode returns all NodeItemConfig records for a given node.
+	ListByNode(ctx context.Context, nodeID string) ([]*models.NodeItemConfig, error)
 
 	// Upsert creates or updates the NodeItemConfig record.
 	Upsert(ctx context.Context, cfg *models.NodeItemConfig) error

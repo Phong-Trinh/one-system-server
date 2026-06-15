@@ -37,6 +37,11 @@ type SupplyChainFacade struct {
 	B2B       B2BUseCase
 	Invoice   InvoiceUseCase
 	Asset     AssetUseCase
+
+	// productionUC and orchestrator are set via SetProductionUseCase after construction
+	// to break the circular dependency (app.go wires facade first, then production UC).
+	productionUC ProductionUseCase
+	orchestrator *OrderPoolingOrchestrator
 }
 
 // InvUseCase is the public alias for services.InventoryService,
@@ -201,6 +206,16 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 		// Patch the orgID on the ITO (CreateAutoITO doesn't have org context).
 		log.Info().Str("ito_id", ito.ID).Msg("[SupplyChainFacade] Auto ITO created")
 
+		// ── Auto-ensure Provider Stock for ITOs ────────────────────────────────
+		// When a Store's ROP triggers an ITO to the Factory, we check if the Factory
+		// already has enough stock for the item. If not, we trigger the Factory's
+		// replenishment strategy (Auto-PO or Draft PurO).
+		if cfg.ProviderNodeID != nil {
+			// Run async to not block the current request (e.g. Sale Order completion).
+			// Use context.Background() so it isn't cancelled when the HTTP request ends.
+			go f.ensureProviderStock(context.Background(), orgID, hqNodeID, *cfg.ProviderNodeID, cfg.ItemID, replenishQty)
+		}
+
 	case models.SourcingExternalProcurement:
 		hasActive, err := f.PurO.HasActivePurO(ctx, cfg.NodeID, cfg.ItemID)
 		if err != nil {
@@ -214,9 +229,10 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 			return nil
 		}
 
+		// Quantity to replenish = ReorderPoint - CurrentQty + SafetyStock (gap + buffer).
 		replenishQty := (cfg.ReorderPoint - result.CurrentQty) + cfg.SafetyStock
 		if replenishQty <= 0 {
-			replenishQty = cfg.SafetyStock
+			replenishQty = cfg.SafetyStock // Minimum: at least the safety stock buffer
 		}
 
 		purO, err := f.PurO.CreateDraftPurO(ctx, orgID, hqNodeID, cfg.NodeID, cfg.ItemID, replenishQty, cfg)
@@ -228,11 +244,18 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 	default:
 		return fmt.Errorf("facade: HandleROPBreach: unknown sourcing strategy %q", result.Strategy)
 	}
-
 	return nil
 }
 
-// StockOutWithROP is a convenience method for the production domain to call after
+// GetBOMByItem delegates to productionUC to resolve BOM for backflushing.
+func (f *SupplyChainFacade) GetBOMByItem(ctx context.Context, itemID string) (*models.BOM, []*models.BOMLine, error) {
+	if f.productionUC == nil {
+		return nil, nil, fmt.Errorf("productionUC not set")
+	}
+	return f.productionUC.GetFullBOMByItem(ctx, itemID)
+}
+
+// StockOutWithROP decreases stock and synchronously evaluates the ROP threshold.uction domain to call after
 // writing a StockConsumption record. It performs StockOut and then dispatches
 // the ROP breach (if any) without the caller needing to know the facade internals.
 //
@@ -240,10 +263,163 @@ func (f *SupplyChainFacade) HandleROPBreach(ctx context.Context, orgID, hqNodeID
 //   - orgID, hqNodeID: passed through to HandleROPBreach for PO/ITO creation.
 //   - nodeID, itemID:  the (node, item) pair being consumed.
 //   - qtyBU:           quantity consumed in base units.
+// SetProductionUseCase wires the ProductionUseCase and Orchestrator into the facade after construction.
+// Must be called in app.go after both the facade and productionUC are created.
+func (f *SupplyChainFacade) SetProductionUseCase(uc ProductionUseCase, orchestrator *OrderPoolingOrchestrator) {
+	f.productionUC = uc
+	f.orchestrator = orchestrator
+}
+
+// ensureProviderStock checks if the Provider (e.g. Factory) has enough
+// stock for the ITO item. If not, it triggers the provider's replenishment strategy
+// (auto-creates a ProductionOrder, or synthesizes a ROP breach for Draft Purchase Order).
+// Runs in a goroutine; errors are logged but do not block the ITO creation.
+func (f *SupplyChainFacade) ensureProviderStock(ctx context.Context, orgID, hqNodeID, providerNodeID, itemID string, neededQty float64) {
+	currentQty, err := f.Inventory.GetStock(ctx, providerNodeID, itemID)
+	if err != nil {
+		log.Error().Err(err).Str("provider_node_id", providerNodeID).Str("item_id", itemID).
+			Msg("[SupplyChainFacade] ensureProviderStock: failed to get provider stock")
+		return
+	}
+
+	if currentQty >= neededQty {
+		log.Info().
+			Str("provider_node_id", providerNodeID).
+			Str("item_id", itemID).
+			Float64("current_qty", currentQty).
+			Float64("needed_qty", neededQty).
+			Msg("[SupplyChainFacade] Provider has sufficient stock for ITO — no auto-replenishment needed")
+		return
+	}
+
+	// Provider doesn't have enough — trigger replenishment for the shortfall.
+	shortfallQty := neededQty - currentQty
+
+	// Determine provider's sourcing strategy for this item.
+	cfg, err := f.Inventory.GetConfig(ctx, providerNodeID, itemID)
+	if err != nil || cfg == nil {
+		log.Warn().Str("item_id", itemID).Str("provider_node_id", providerNodeID).
+			Msg("[SupplyChainFacade] ensureProviderStock: no NodeItemConfig found, cannot determine strategy. Falling back to ProductionOrder.")
+	} else if cfg.SourcingStrategy == models.SourcingExternalProcurement {
+		// Externally procured item — synthesize a ROP breach so HQ can buy it
+		result := &services.ROPCheckResult{
+			Breached:     true,
+			CurrentQty:   currentQty,
+			// Set ReorderPoint to neededQty so (ROP - CurrentQty + SafetyStock) >= shortfall
+			ReorderPoint: neededQty,
+			Strategy:     models.SourcingExternalProcurement,
+			Config:       cfg,
+		}
+
+		log.Info().
+			Str("provider_node_id", providerNodeID).
+			Str("item_id", itemID).
+			Float64("shortfall", shortfallQty).
+			Msg("[SupplyChainFacade] ensureProviderStock: short on procured item, triggering draft Purchase Order")
+
+		if err := f.HandleROPBreach(ctx, orgID, hqNodeID, result); err != nil {
+			log.Error().Err(err).Str("item_id", itemID).Msg("[SupplyChainFacade] ensureProviderStock: failed to handle synthesized ROP breach")
+		}
+		return
+	} else if cfg.SourcingStrategy == models.SourcingInternalTransfer {
+		log.Warn().Str("item_id", itemID).Str("provider_node_id", providerNodeID).
+			Msg("[SupplyChainFacade] ensureProviderStock: cascading internal transfers not fully supported yet")
+		return
+	}
+
+	// Default/Fallback: Auto-create Production Order (LOCAL_PRODUCTION)
+	if f.productionUC == nil {
+		return
+	}
+
+	// Find the BOM for this item.
+	bom, _, err := f.productionUC.GetFullBOMByItem(ctx, itemID)
+	if err != nil || bom == nil {
+		log.Warn().
+			Str("provider_node_id", providerNodeID).
+			Str("item_id", itemID).
+			Msg("[SupplyChainFacade] ensureProviderStock: no BOM found for item — cannot auto-create PO")
+		return
+	}
+
+	po, err := f.productionUC.CreateProductionOrder(ctx, bom.ID, providerNodeID, shortfallQty)
+	if err != nil {
+		log.Error().Err(err).Str("provider_node_id", providerNodeID).Str("item_id", itemID).
+			Msg("[SupplyChainFacade] ensureProviderStock: failed to create Production Order")
+		return
+	}
+
+	log.Info().
+		Str("po_id", po.ID).
+		Str("provider_node_id", providerNodeID).
+		Str("item_id", itemID).
+		Float64("produce_qty", shortfallQty).
+		Msg("[SupplyChainFacade] ✅ Auto-created Production Order at Provider to fulfill ITO demand")
+
+	// Enqueue into the orchestrator for automatic batch decomposition.
+	if f.orchestrator != nil {
+		f.orchestrator.Enqueue(po)
+	}
+}
+
 func (f *SupplyChainFacade) StockOutWithROP(ctx context.Context, orgID, hqNodeID, nodeID, itemID string, qtyBU float64) error {
 	result, err := f.Inventory.StockOut(ctx, nodeID, itemID, qtyBU)
 	if err != nil {
 		return fmt.Errorf("facade: StockOutWithROP: %w", err)
 	}
 	return f.HandleROPBreach(ctx, orgID, hqNodeID, result)
+}
+
+// RunMRPForProductionOrder is called immediately after a Production Order is created.
+// It checks if there is sufficient stock for all BOM ingredients. If a shortage is detected,
+// it synthesizes a ROP breach to automatically trigger the configured replenishment strategy
+// (e.g., EXTERNAL_PROCUREMENT creates a Draft Purchase Order at HQ).
+func (f *SupplyChainFacade) RunMRPForProductionOrder(ctx context.Context, orgID, hqNodeID string, po *models.ProductionOrder) {
+	_, bomLines, err := f.GetBOMByItem(ctx, po.ItemID)
+	if err != nil || len(bomLines) == 0 {
+		log.Warn().Str("po_id", po.ID).Msg("[SupplyChainFacade] MRP skipped: no BOM found for PO item")
+		return
+	}
+
+	for _, line := range bomLines {
+		requiredQty := line.Qty * po.PlannedInput
+
+		currentQty, err := f.Inventory.GetStock(ctx, po.NodeID, line.ItemID)
+		if err != nil {
+			log.Error().Err(err).Str("item_id", line.ItemID).Msg("[SupplyChainFacade] MRP: failed to get stock")
+			continue
+		}
+
+		if currentQty >= requiredQty {
+			continue // Sufficient stock, no action needed.
+		}
+
+		// Material shortage detected!
+		cfg, err := f.Inventory.GetConfig(ctx, po.NodeID, line.ItemID)
+		if err != nil || cfg == nil {
+			log.Warn().Str("item_id", line.ItemID).Msg("[SupplyChainFacade] MRP: item is short, but no NodeItemConfig found to trigger replenishment")
+			continue
+		}
+
+		// Synthesize a ROP breach to reuse HandleROPBreach logic.
+		// By setting ReorderPoint to requiredQty, the calculation `(ReorderPoint - CurrentQty) + SafetyStock`
+		// correctly yields `shortage + SafetyStock`.
+		fakeResult := &services.ROPCheckResult{
+			Breached:     true,
+			CurrentQty:   currentQty,
+			ReorderPoint: requiredQty,
+			Strategy:     cfg.SourcingStrategy,
+			Config:       cfg,
+		}
+
+		log.Info().
+			Str("po_id", po.ID).
+			Str("item_id", line.ItemID).
+			Float64("shortage", requiredQty-currentQty).
+			Msg("[SupplyChainFacade] MRP: Material shortage detected, triggering replenishment")
+
+		if err := f.HandleROPBreach(ctx, orgID, hqNodeID, fakeResult); err != nil {
+			log.Error().Err(err).Str("item_id", line.ItemID).Msg("[SupplyChainFacade] MRP: failed to handle ROP breach")
+		}
+	}
 }

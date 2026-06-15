@@ -18,7 +18,10 @@ const NAV_CONFIG = {
       { id: 'hq-assets',      label: 'Asset Registry',        icon: '🏗️' },
       { id: 'hq-eqtypes',     label: 'Equipment Types',       icon: '🛠️' },
       { id: 'hq-suppliers',   label: 'Suppliers',             icon: '🏢' },
+      { id: 'hq-items',       label: 'Items Catalog',         icon: '📦' },
       { id: 'hq-bom',         label: 'BOM & SOP',             icon: '⚙️' },
+      { id: 'hq-rop-config',  label: 'ROP Configuration',     icon: '📊' },
+      { id: 'hq-stock-init',  label: 'Stock Initialization',  icon: '🔢' },
     ]},
     { section: 'Sales', pages: [
       { id: 'hq-b2b',         label: 'B2B Sales Orders',      icon: '🤝' },
@@ -135,6 +138,9 @@ function renderPage(id) {
     'hq-suppliers':   typeof renderHQSuppliers === 'function' ? renderHQSuppliers : () => 'Loading...',
     'hq-b2b':         typeof renderHQB2B === 'function' ? renderHQB2B : () => 'Loading...',
     'hq-bom':         typeof renderHQBOM === 'function' ? renderHQBOM : () => 'Loading...',
+    'hq-items':       typeof renderHQItems === 'function' ? renderHQItems : () => 'Loading...',
+    'hq-rop-config':  typeof renderHQROPConfig === 'function' ? renderHQROPConfig : () => 'Loading...',
+    'hq-stock-init':  typeof renderHQStockInit === 'function' ? renderHQStockInit : () => 'Loading...',
     'hq-discrepancy': typeof renderHQDiscrepancy === 'function' ? renderHQDiscrepancy : () => 'Loading...',
     'hq-financials':  typeof renderHQFinancials === 'function' ? renderHQFinancials : () => 'Loading...',
     /* Factory */

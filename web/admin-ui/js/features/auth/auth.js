@@ -27,6 +27,7 @@ function doLogin() {
       orgId: 'SNAPBITE_ORG',
       staffId: 'staff_hq_admin'
     };
+    state.orgId = 'SNAPBITE_ORG'; // explicitly set state.orgId for legacy features
     toast('Welcome back, Admin!', 'success');
     showNodeSelector();
   } else {

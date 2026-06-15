@@ -63,6 +63,7 @@ type PurOUseCase interface {
 	ListDrafts(ctx context.Context, orgID string) ([]*models.PurchaseOrder, error)
 	ListByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error)
 	HasActivePurO(ctx context.Context, deliveryNodeID, itemID string) (bool, error)
+	SimpleConfirmPurO(ctx context.Context, purOID, staffID string) error
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -263,6 +264,25 @@ func (uc *purOUseCase) ConfirmDraftPurO(ctx context.Context, purOID, supplierID,
 	return uc.purORepo.Update(ctx, purO)
 }
 
+// SimpleConfirmPurO provides a shortcut to confirm an auto-generated draft PO without modifying lines.
+func (uc *purOUseCase) SimpleConfirmPurO(ctx context.Context, purOID, staffID string) error {
+	purO, err := uc.loadPurO(ctx, purOID)
+	if err != nil {
+		return err
+	}
+	if purO.Status != models.PurchaseOrderDraft {
+		return fmt.Errorf("po: SimpleConfirm: PO %s is not in DRAFT (current: %s)", purOID, purO.Status)
+	}
+	
+	now := time.Now()
+	purO.Status = models.PurchaseOrderConfirmed
+	purO.ConfirmedBy = &staffID
+	purO.ConfirmedAt = &now
+	purO.UpdatedAt = now
+
+	return uc.purORepo.Update(ctx, purO)
+}
+
 // ── MarkShipped ───────────────────────────────────────────────────────────────
 
 func (uc *purOUseCase) MarkShipped(ctx context.Context, purOID string) error {
@@ -336,8 +356,8 @@ func (uc *purOUseCase) HasActivePurO(ctx context.Context, deliveryNodeID, itemID
 		return false, err
 	}
 	for _, po := range puros {
-		if po.Status == models.PurchaseOrderCompleted || po.Status == models.PurchaseOrderCancelled {
-			continue // Not active
+		if po.Status == models.PurchaseOrderCompleted || po.Status == models.PurchaseOrderCancelled || po.Status == models.PurchaseOrderDelivered {
+			continue // Not active (already received, cancelled, or fully settled)
 		}
 		
 		lines, err := uc.lineRepo.ListByPurO(ctx, po.ID)

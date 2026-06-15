@@ -245,6 +245,53 @@ function handleOverlayClick(e) {
   if (e.target.classList.contains('modal-overlay')) closeModal();
 }
 
+/**
+ * showModal - dynamic modal generator used by feature modules
+ * @param {string} title - The modal title
+ * @param {string} bodyHtml - The HTML content for the modal body
+ * @param {Array} buttons - Array of button config objects: { label, primary, action }
+ */
+function showModal(title, bodyHtml, buttons = []) {
+  const mc = document.getElementById('modal-container');
+  mc.classList.remove('hidden');
+  
+  // Render structure
+  mc.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>${title}</h3>
+          <button class="modal-close" id="dynamic-modal-close">✕</button>
+        </div>
+        <div class="flex col gap-16" id="modal-body">
+          ${bodyHtml}
+        </div>
+        ${buttons && buttons.length > 0 ? `<div class="modal-actions" id="dynamic-modal-actions" style="margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end;"></div>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Attach overlay and close button listeners
+  mc.querySelector('.modal-overlay').addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-overlay')) closeModal();
+  });
+  mc.querySelector('#dynamic-modal-close').addEventListener('click', closeModal);
+
+  // Attach button actions safely
+  if (buttons && buttons.length > 0) {
+    const actionsContainer = mc.querySelector('#dynamic-modal-actions');
+    buttons.forEach(btn => {
+      const buttonEl = document.createElement('button');
+      buttonEl.className = btn.primary ? 'btn btn-primary' : 'btn btn-outline';
+      buttonEl.textContent = btn.label;
+      if (btn.action) {
+        buttonEl.addEventListener('click', btn.action);
+      }
+      actionsContainer.appendChild(buttonEl);
+    });
+  }
+}
+
 /* ── Dynamic Form Togglers ───────────────────────────────── */
 function toggleNewSupplier() {
   const sel = document.getElementById('m-conv-supplier').value;

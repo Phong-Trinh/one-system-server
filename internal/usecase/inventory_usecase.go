@@ -163,3 +163,8 @@ func (uc *inventoryUseCase) checkROPInternal(ctx context.Context, nodeID, itemID
 		Config:       cfg,
 	}, nil
 }
+
+// GetConfig fetches the NodeItemConfig for a given node and item.
+func (uc *inventoryUseCase) GetConfig(ctx context.Context, nodeID, itemID string) (*models.NodeItemConfig, error) {
+	return uc.configRepo.Get(ctx, nodeID, itemID)
+}
