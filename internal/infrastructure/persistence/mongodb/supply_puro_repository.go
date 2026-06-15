@@ -155,6 +155,7 @@ type puroLineDoc struct {
 	PurOID          string  `bson:"puro_id"`
 	ItemID          *string `bson:"item_id,omitempty"`
 	EquipmentTypeID *string `bson:"equipment_type_id,omitempty"`
+	ExpectedCapacity *float64 `bson:"expected_capacity,omitempty"`
 	QtyOrdered      float64 `bson:"qty_ordered"`
 	PkgUnit         string  `bson:"pkg_unit"`
 	Conversion      float64 `bson:"conversion"`
@@ -167,6 +168,7 @@ func puroLineToDoc(line *models.PurchaseOrderLine) *puroLineDoc {
 		PurOID:          line.PurOID,
 		ItemID:          line.ItemID,
 		EquipmentTypeID: line.EquipmentTypeID,
+		ExpectedCapacity: line.ExpectedCapacity,
 		QtyOrdered:      line.QtyOrdered,
 		PkgUnit:         line.PkgUnit,
 		Conversion:      line.Conversion,
@@ -180,6 +182,7 @@ func docToPurOLine(d *puroLineDoc) *models.PurchaseOrderLine {
 		PurOID:          d.PurOID,
 		ItemID:          d.ItemID,
 		EquipmentTypeID: d.EquipmentTypeID,
+		ExpectedCapacity: d.ExpectedCapacity,
 		QtyOrdered:      d.QtyOrdered,
 		PkgUnit:         d.PkgUnit,
 		Conversion:      d.Conversion,
@@ -232,3 +235,49 @@ func (r *puroLineRepository) DeleteLine(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (r *puroLineRepository) GetHistoricalPrice(ctx context.Context, supplierID string, itemID *string, eqTypeID *string) (float64, error) {
+	if itemID == nil && eqTypeID == nil {
+		return 0, nil
+	}
+
+	matchFilter := bson.M{}
+	if itemID != nil && *itemID != "" {
+		matchFilter["item_id"] = *itemID
+	}
+	if eqTypeID != nil && *eqTypeID != "" {
+		matchFilter["equipment_type_id"] = *eqTypeID
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: matchFilter}},
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: collPurchaseOrders},
+			{Key: "localField", Value: "puro_id"},
+			{Key: "foreignField", Value: "_id"},
+			{Key: "as", Value: "po"},
+		}}},
+		{{Key: "$unwind", Value: "$po"}},
+		{{Key: "$match", Value: bson.M{"po.supplier_id": supplierID}}},
+		{{Key: "$sort", Value: bson.D{{Key: "_id", Value: -1}}}}, // most recent first
+		{{Key: "$limit", Value: 1}},
+	}
+
+	cur, err := r.col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, fmt.Errorf("puroLineRepository.GetHistoricalPrice: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	if !cur.Next(ctx) {
+		return 0, nil // No history found
+	}
+
+	var doc puroLineDoc
+	if err := cur.Decode(&doc); err != nil {
+		return 0, err
+	}
+
+	return doc.UnitPrice, nil
+}
+

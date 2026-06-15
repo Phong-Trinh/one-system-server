@@ -83,13 +83,13 @@ func (h *PurOHandler) List(c *gin.Context) {
 	c.JSON(http.StatusBadRequest, gin.H{"error": "Must provide delivery_node_id or org_id"})
 }
 
-func (h *PurOHandler) MarkShipped(c *gin.Context) {
+func (h *PurOHandler) MarkOnWayDelivery(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.puroService.MarkShipped(c.Request.Context(), id); err != nil {
+	if err := h.puroService.MarkOnWayDelivery(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "PO marked as shipped"})
+	c.JSON(http.StatusOK, gin.H{"message": "PO marked as on way delivery"})
 }
 
 func (h *PurOHandler) Confirm(c *gin.Context) {

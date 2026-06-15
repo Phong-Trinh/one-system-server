@@ -13,7 +13,7 @@ async function renderFacDashboard() {
     pending = allPuros.filter(p => p.status !== 'COMPLETED').length;
   } catch (e) { }
 
-  const incomingDeliveries = allPuros.filter(p => p.status === 'SHIPPED');
+  const incomingDeliveries = allPuros.filter(p => p.status === 'ON_WAY_DELIVERY');
 
   const busyMach = 0; // MACHINES
   const lowStock = 0; // NODE_STOCK.FACTORY

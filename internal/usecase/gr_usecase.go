@@ -53,15 +53,15 @@ func newGRUseCase(
 }
 
 // ConfirmPurOGoodsReceipt records receipt of goods delivered by a supplier.
-// Called after the node receives goods from the supplier (linked to a SHIPPED PurchaseOrder).
-// Transitions the PO from SHIPPED → remains SHIPPED here; SettlePayment moves it to COMPLETED.
+// Called after the node receives goods from the supplier (linked to a ON_WAY_DELIVERY PurchaseOrder).
+// Transitions the PO from ON_WAY_DELIVERY → remains ON_WAY_DELIVERY here; SettlePayment moves it to COMPLETED.
 func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receivingNodeID, staffID string, lines []GRLineInput) (*models.GoodsReceipt, error) {
 	purO, err := uc.purORepo.FindByID(ctx, purOID)
 	if err != nil || purO == nil {
 		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s not found: %w", purOID, err)
 	}
-	if purO.Status != models.PurchaseOrderShipped {
-		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s must be SHIPPED to receive (current: %s)", purOID, purO.Status)
+	if purO.Status != models.PurchaseOrderOnWayDelivery {
+		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s must be ON_WAY_DELIVERY to receive (current: %s)", purOID, purO.Status)
 	}
 
 	// Prevent duplicate Goods Receipts for the same Purchase Order

@@ -8,14 +8,16 @@ import (
 
 	"one-system-server/internal/domain/models"
 	"one-system-server/internal/domain/services"
+	"one-system-server/internal/usecase"
 )
 
 type SupplierHandler struct {
 	supplierRepo services.SupplierRepository
+	purOUC       usecase.PurOUseCase
 }
 
-func newSupplierHandler(repo services.SupplierRepository) *SupplierHandler {
-	return &SupplierHandler{supplierRepo: repo}
+func newSupplierHandler(repo services.SupplierRepository, purOUC usecase.PurOUseCase) *SupplierHandler {
+	return &SupplierHandler{supplierRepo: repo, purOUC: purOUC}
 }
 
 func (h *SupplierHandler) Create(c *gin.Context) {
@@ -51,3 +53,34 @@ func (h *SupplierHandler) List(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, suppliers)
 }
+
+// SupplierPriceRequest represents the payload for querying historical prices for multiple lines
+type SupplierPriceRequest struct {
+	SupplierID string `json:"supplier_id"`
+	Lines []struct {
+		ItemID *string `json:"item_id"`
+		EquipmentTypeID *string `json:"equipment_type_id"`
+	} `json:"lines"`
+}
+
+func (h *SupplierHandler) GetHistoricalPrices(c *gin.Context) {
+	var req SupplierPriceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	prices := make([]float64, len(req.Lines))
+
+	for i, line := range req.Lines {
+		price, err := h.purOUC.GetHistoricalPrice(c.Request.Context(), req.SupplierID, line.ItemID, line.EquipmentTypeID)
+		if err != nil {
+			// Ignore error, just return 0
+			price = 0
+		}
+		prices[i] = price
+	}
+
+	c.JSON(http.StatusOK, gin.H{"prices": prices})
+}
+

@@ -127,21 +127,7 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 
 	now := time.Now()
 
-	// System auto-generates the machine ID. Clients never assign machine IDs for CapEx assets.
-	machineID := "MACH-" + uuid.NewString()[:8]
-	machine := &models.Machine{
-		ID:              machineID,
-		EquipmentTypeID: equipmentTypeID,
-		NodeID:          purO.DeliveryToNodeID,
-		MaxCapacity:     maxCapacity,
-		Status:          models.MachineIdle,
-		LinkedAssetID:   nil, // back-linked after asset is persisted
-	}
-	if err := uc.machineRepo.Create(ctx, machine); err != nil {
-		return nil, fmt.Errorf("asset: AutoCreateAsset: create machine: %w", err)
-	}
-
-	// Asset starts as IN_USE — it's already physically delivered and the machine is live.
+	// Asset starts as PENDING_REGISTRATION — it needs to be explicitly registered as a Machine by the Store Manager
 	asset := &models.Asset{
 		ID:               uuid.NewString(),
 		OrgID:            purO.OrgID,
@@ -150,9 +136,9 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 		LinkedPRID:       *purO.PRID,
 		LinkedPurOID:     purOID,
 		LinkedGRID:       grID,
-		LinkedMachineID:  &machineID,
+		LinkedMachineID:  nil, // set when RegisterAsMachine is called
 		AcquisitionDate:  gr.ReceivedAt.Truncate(24 * time.Hour),
-		Status:           models.AssetInUse,
+		Status:           models.AssetPendingRegistration,
 		Depreciation:     models.DepreciationStraightLine,
 		UsefulLifeYears:  5,
 		CurrentBookValue: 0,
@@ -161,12 +147,6 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 	}
 	if err := uc.assetRepo.Create(ctx, asset); err != nil {
 		return nil, fmt.Errorf("asset: AutoCreateAsset: persist asset: %w", err)
-	}
-
-	// Back-link machine → asset.
-	machine.LinkedAssetID = &asset.ID
-	if err := uc.machineRepo.Update(ctx, machine); err != nil {
-		return nil, fmt.Errorf("asset: AutoCreateAsset: link machine to asset: %w", err)
 	}
 
 	return asset, nil

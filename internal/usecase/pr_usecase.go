@@ -95,6 +95,7 @@ func (uc *prUseCase) SubmitPR(ctx context.Context, req services.SubmitPRRequest)
 			UnitOfMeasure:         l.UnitOfMeasure,
 			EstimatedUnitPrice:    l.EstimatedUnitPrice,
 			Justification:         l.Justification,
+			Description:           l.Description,
 		}
 		if err := uc.lineRepo.AddLine(ctx, line); err != nil {
 			return nil, fmt.Errorf("pr: SubmitPR: add line %d: %w", i, err)
@@ -104,10 +105,10 @@ func (uc *prUseCase) SubmitPR(ctx context.Context, req services.SubmitPRRequest)
 	return pr, nil
 }
 
-// ApprovePR transitions a PENDING_HQ_APPROVAL PR to APPROVED.
-// If any line specifies a proposed EquipmentType in DRAFT status,
-// it automatically activates it (sets status = ACTIVE).
-func (uc *prUseCase) ApprovePR(ctx context.Context, prID, reviewerStaffID string, note *string) error {
+// ApprovePR applies HQ corrections to all lines, activates any draft EquipmentTypes,
+// then transitions the PR to APPROVED — all atomically.
+// HQ corrections are written back to the PR lines so the PR is the authoritative record.
+func (uc *prUseCase) ApprovePR(ctx context.Context, prID, reviewerStaffID string, note *string, corrections []services.PRLineCorrection) error {
 	pr, err := uc.loadPR(ctx, prID)
 	if err != nil {
 		return err
@@ -116,23 +117,65 @@ func (uc *prUseCase) ApprovePR(ctx context.Context, prID, reviewerStaffID string
 		return fmt.Errorf("pr: ApprovePR: PR %s is not in PENDING_HQ_APPROVAL (current: %s)", prID, pr.Status)
 	}
 
-	// Auto-activate proposed/draft equipment types
+	// Load current lines to validate corrections
 	lines, err := uc.lineRepo.ListByPR(ctx, prID)
 	if err != nil {
 		return fmt.Errorf("pr: ApprovePR: list lines: %w", err)
 	}
+
+	// Build index for fast lookup
+	lineByID := make(map[string]*models.PRLine, len(lines))
 	for _, l := range lines {
-		if l.EquipmentTypeID != nil && *l.EquipmentTypeID != "" {
-			eqType, err := uc.eqTypeRepo.FindByID(ctx, *l.EquipmentTypeID)
+		lineByID[l.ID] = l
+	}
+
+	// Step 1: Validate and apply HQ corrections to each line
+	correctionByLineID := make(map[string]services.PRLineCorrection, len(corrections))
+	for _, c := range corrections {
+		correctionByLineID[c.LineID] = c
+	}
+
+	for _, line := range lines {
+		c, ok := correctionByLineID[line.ID]
+		if !ok {
+			return fmt.Errorf("pr: ApprovePR: missing HQ correction for line %s", line.ID)
+		}
+		if c.EquipmentTypeID == "" && line.ItemID == nil {
+			return fmt.Errorf("pr: ApprovePR: line %s must have a verified equipment_type_id", line.ID)
+		}
+		if c.Qty <= 0 {
+			return fmt.Errorf("pr: ApprovePR: line %s qty must be > 0", line.ID)
+		}
+
+		// Apply corrections to the line model
+		eqTypeID := c.EquipmentTypeID
+		line.EquipmentTypeID = &eqTypeID
+		line.ExpectedCapacity = c.ExpectedCapacity
+		line.ProposedEquipmentName = nil // HQ has verified; clear the free-text field
+		line.Qty = c.Qty
+		line.UnitOfMeasure = c.UnitOfMeasure
+		line.EstimatedUnitPrice = c.EstimatedPrice
+
+		// Persist corrected line back to the database
+		if err := uc.lineRepo.UpdateLine(ctx, line); err != nil {
+			return fmt.Errorf("pr: ApprovePR: update line %s: %w", line.ID, err)
+		}
+	}
+
+	// Step 2: Auto-activate any DRAFT EquipmentTypes referenced by the (now-corrected) lines
+	for _, line := range lines {
+		if line.EquipmentTypeID != nil && *line.EquipmentTypeID != "" {
+			eqType, err := uc.eqTypeRepo.FindByID(ctx, *line.EquipmentTypeID)
 			if err == nil && eqType != nil && eqType.Status == models.EquipmentTypeDraft {
 				eqType.Status = models.EquipmentTypeActive
 				if err := uc.eqTypeRepo.Update(ctx, eqType); err != nil {
-					return fmt.Errorf("pr: ApprovePR: activate equipment type %s: %w", *l.EquipmentTypeID, err)
+					return fmt.Errorf("pr: ApprovePR: activate equipment type %s: %w", *line.EquipmentTypeID, err)
 				}
 			}
 		}
 	}
 
+	// Step 3: Transition PR to APPROVED
 	now := time.Now()
 	pr.Status = models.PRApproved
 	pr.ReviewedBy = &reviewerStaffID
@@ -142,6 +185,7 @@ func (uc *prUseCase) ApprovePR(ctx context.Context, prID, reviewerStaffID string
 
 	return uc.prRepo.Update(ctx, pr)
 }
+
 
 // RejectPR transitions a PENDING_HQ_APPROVAL PR to REJECTED with a mandatory reason.
 func (uc *prUseCase) RejectPR(ctx context.Context, prID, reviewerStaffID, reason string) error {

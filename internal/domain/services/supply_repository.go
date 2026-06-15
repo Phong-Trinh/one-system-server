@@ -81,6 +81,9 @@ type PurchaseRequisitionRepository interface {
 type PRLineRepository interface {
 	AddLine(ctx context.Context, line *models.PRLine) error
 	ListByPR(ctx context.Context, prID string) ([]*models.PRLine, error)
+	// UpdateLine overwrites the correctable fields of an existing PR line.
+	// Used exclusively by HQ during the review-and-approve step.
+	UpdateLine(ctx context.Context, line *models.PRLine) error
 }
 
 // ── §1.3 Purchase Order ───────────────────────────────────────────────────────
@@ -101,6 +104,9 @@ type PurchaseOrderLineRepository interface {
 	AddLine(ctx context.Context, line *models.PurchaseOrderLine) error
 	ListByPurO(ctx context.Context, purOID string) ([]*models.PurchaseOrderLine, error)
 	DeleteLine(ctx context.Context, id string) error
+	// GetHistoricalPrice returns the most recent unit price paid to a specific supplier for an item or equipment type.
+	// Returns 0 if there is no history.
+	GetHistoricalPrice(ctx context.Context, supplierID string, itemID *string, equipmentTypeID *string) (float64, error)
 }
 
 // ── Goods Issue ───────────────────────────────────────────────────────────────

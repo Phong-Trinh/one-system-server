@@ -1,6 +1,6 @@
-/* ─── HQ / Goods Receipts ────────────────────────────────────────────────────
-   View and Record Goods Receipts for shipped POs.
-   Depends on: helpers.js, mock-data.js, toast.js, router.js, modal.js.
+/* ─── HQ / Goods Receipts ──────────────────────────────────────────────────────
+   View and Record Goods Receipts for on way delivery POs.
+   Depends on: helpers.js, mock-data.js, toast.js.
 ──────────────────────────────────────────────────────────────────────────── */
 
 async function renderHQGoodsReceipts() {
@@ -18,7 +18,7 @@ async function renderHQGoodsReceipts() {
     return `<div class="error">Failed to load data: ${err.message}</div>`;
   }
 
-  const shippedPOs = puros.filter(p => p.status === 'SHIPPED');
+  const onWayDeliveryPOs = puros.filter(p => p.status === 'ON_WAY_DELIVERY');
 
   return `
     ${pageHeader(
@@ -26,8 +26,8 @@ async function renderHQGoodsReceipts() {
       'Log deliveries from external suppliers (HQ overlay for Store/Factory GR actions)'
     )}
 
-    <!-- Highlight SHIPPED POs that need receiving -->
-    <h3 style="margin-bottom:12px; margin-top:24px">Awaiting Receipt</h3>
+    <!-- Highlight ON_WAY_DELIVERY POs that need receiving -->
+    <h3 style="margin-bottom:12px; color:var(--amber)">Pending Receipts (On Way Delivery)</h3>
     <div class="card p-0" style="margin-bottom:32px">
       <div class="table-wrap">
         <table>
@@ -37,7 +37,7 @@ async function renderHQGoodsReceipts() {
             </tr>
           </thead>
           <tbody>
-            ${shippedPOs.map(p => {
+            ${onWayDeliveryPOs.map(p => {
               const supplier = suppliers.find(s => s.id === p.supplier_id);
               return `
                 <tr>
@@ -51,7 +51,7 @@ async function renderHQGoodsReceipts() {
                 </tr>
               `;
             }).join('')}
-            ${shippedPOs.length === 0 ? `<tr><td colspan="5" class="faint" style="text-align:center; padding: 24px;">No pending shipments.</td></tr>` : ''}
+            ${onWayDeliveryPOs.length === 0 ? `<tr><td colspan="5" class="faint" style="text-align:center; padding: 24px;">No pending deliveries.</td></tr>` : ''}
           </tbody>
         </table>
       </div>

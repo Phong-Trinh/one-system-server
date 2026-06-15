@@ -22,7 +22,9 @@ async function renderFacPR() {
     'Request CapEx equipment or exceptional purchases'
   )}
     
-    <div class="card" style="max-width: 600px; margin-bottom: 24px;">
+    <div class="grid-2 gap-24" style="margin-bottom: 24px;">
+      <!-- Actual PR Form -->
+      <div class="card" style="width: 100%;">
       <div class="field">
         <label>Equipment Type</label>
         <select id="pr-eq-type" onchange="toggleNewEquipmentType()">
@@ -43,7 +45,7 @@ async function renderFacPR() {
         </div>
       </div>
 
-      <div class="grid cols-2" style="margin-top:16px">
+      <div class="grid-2" style="margin-top:16px">
         <div class="field">
           <label>Expected Capacity</label>
           <input type="number" id="pr-exp-cap" placeholder="e.g., 4.0">
@@ -54,7 +56,7 @@ async function renderFacPR() {
         </div>
       </div>
 
-      <div class="grid cols-2" style="margin-top:16px">
+      <div class="grid-2" style="margin-top:16px">
         <div class="field">
           <label>Unit of Measure</label>
           <input type="text" id="pr-uom" value="unit">
@@ -66,14 +68,80 @@ async function renderFacPR() {
       </div>
 
       <div class="field" style="margin-top:16px">
+        <label>Detailed Description (Optional)</label>
+        <textarea id="pr-desc" rows="4" placeholder="Describe the item specifications..."></textarea>
+        <div class="dim small" style="margin-top:4px">Provide as much detail as possible to help HQ.</div>
+      </div>
+
+      <div class="field" style="margin-top:16px">
         <label>Justification</label>
-        <textarea id="pr-note" rows="3" placeholder="Why is this needed?"></textarea>
+        <textarea id="pr-note" rows="2" placeholder="Why is this needed?"></textarea>
       </div>
       
       <div style="margin-top:24px">
         <button class="btn btn-primary fw" onclick="submitFacPR()">Submit Requisition</button>
       </div>
     </div>
+
+    <!-- Example Template Form -->
+    <div class="card" style="width: 100%; border: 2px dashed var(--border); background: var(--bg-hover); opacity: 0.85;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;">
+        <span style="font-size:20px">💡</span>
+        <h3 style="margin:0; color:var(--text)">Example: How to fill a PR</h3>
+      </div>
+      
+      <div class="field">
+        <label>Equipment Type</label>
+        <select disabled style="background: var(--bg);"><option>➕ Request New Equipment Type...</option></select>
+      </div>
+
+      <div style="margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+        <div class="field">
+          <label>Proposed Name</label>
+          <input type="text" disabled value="Industrial Pizza Oven">
+        </div>
+        <div class="field">
+          <label>Capacity Unit</label>
+          <input type="text" disabled value="trays">
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:16px">
+        <div class="field">
+          <label>Expected Capacity</label>
+          <input type="number" disabled value="4">
+        </div>
+        <div class="field">
+          <label>Quantity</label>
+          <input type="number" disabled value="1">
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:16px">
+        <div class="field">
+          <label>Unit of Measure</label>
+          <input type="text" disabled value="unit">
+        </div>
+        <div class="field">
+          <label>Est. Unit Price (VND)</label>
+          <input type="text" disabled value="15000000">
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:16px">
+        <label>Detailed Description</label>
+        <textarea disabled rows="3" style="font-family:monospace; color:var(--text-dim); background: var(--bg);">- Kích thước tối đa: 1.2m x 0.8m
+- Nguồn điện: 220V / 50Hz
+- Chất liệu: Inox 304 chống rỉ
+- Yêu cầu khác: Có bánh xe di chuyển</textarea>
+      </div>
+
+      <div class="field" style="margin-top:16px">
+        <label>Justification</label>
+        <textarea disabled rows="2" style="background: var(--bg);">Cần máy nướng bánh mới để mở rộng menu cho ca sáng, máy cũ đã quá tải và hay hỏng.</textarea>
+      </div>
+    </div>
+  </div>
 
     <h3>My Purchase Requisitions</h3>
     <div class="card p-0" style="margin-top: 12px">
@@ -117,6 +185,7 @@ async function submitFacPR() {
   const uom = document.getElementById('pr-uom').value;
   const price = parseFloat(document.getElementById('pr-price').value);
   const note = document.getElementById('pr-note').value;
+  const desc = document.getElementById('pr-desc').value;
 
   if (!eqType || !qty || !price || !note) {
     toast('Please fill all required fields.', 'error');
@@ -146,7 +215,8 @@ async function submitFacPR() {
         qty: qty,
         unit_of_measure: uom,
         estimated_unit_price: price,
-        justification: note
+        justification: note,
+        description: desc
       }
     ]
   };

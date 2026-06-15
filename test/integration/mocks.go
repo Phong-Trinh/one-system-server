@@ -57,6 +57,18 @@ func (m *mockPRLineRepo) AddLine(ctx context.Context, line *models.PRLine) error
 func (m *mockPRLineRepo) ListByPR(ctx context.Context, prID string) ([]*models.PRLine, error) {
 	return m.lines[prID], nil
 }
+func (m *mockPRLineRepo) UpdateLine(ctx context.Context, line *models.PRLine) error {
+	for _, lines := range m.lines {
+		for i, l := range lines {
+			if l.ID == line.ID {
+				lines[i] = line
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("mockPRLineRepo.UpdateLine: line %s not found", line.ID)
+}
+
 
 type mockPurORepo struct {
 	puros map[string]*models.PurchaseOrder
@@ -114,6 +126,11 @@ func (m *mockPurOLineRepo) DeleteLine(ctx context.Context, id string) error {
 	}
 	return nil
 }
+func (m *mockPurOLineRepo) GetHistoricalPrice(ctx context.Context, supplierID string, itemID *string, equipmentTypeID *string) (float64, error) {
+	// Mock returns 0
+	return 0, nil
+}
+
 
 type mockSupplierRepo struct {
 	suppliers map[string]*models.Supplier

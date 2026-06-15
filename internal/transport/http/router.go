@@ -204,7 +204,7 @@ func NewRouter(
 			puros.POST("", puroH.Create)
 			puros.GET("", puroH.List)
 			puros.GET("/:id", puroH.GetByID)
-			puros.PATCH("/:id/ship", puroH.MarkShipped)
+			puros.PATCH("/:id/on-way", puroH.MarkOnWayDelivery)
 			puros.PATCH("/:id/confirm", puroH.Confirm)
 			puros.PATCH("/:id/confirm-draft", puroH.ConfirmDraft)
 		}
@@ -233,12 +233,14 @@ func NewRouter(
 			assets.PATCH("/:id/status", assetH.SyncStatus)
 		}
 
-		supplierH := newSupplierHandler(supplierRepo)
+		supplierH := newSupplierHandler(supplierRepo, supplyFacade.PurO)
 		v1.GET("/suppliers", supplierH.List)
 		v1.POST("/suppliers", supplierH.Create)
+		v1.POST("/suppliers/historical-prices", supplierH.GetHistoricalPrices)
 
 		eqTypeH := newEquipmentTypeHandler(eqTypeRepo)
 		v1.GET("/equipment-types", eqTypeH.List)
+		v1.POST("/equipment-types", eqTypeH.Create)
 	}
 
 	return &Router{engine: engine}

@@ -39,10 +39,10 @@ const api = {
     async getPR(prId) {
         return fetchJSON(`${API_BASE}/prs/${prId}`);
     },
-    async approvePR(prId, staffId, note) {
+    async approvePR(prId, staffId, note, lines) {
         return fetchJSON(`${API_BASE}/prs/${prId}/approve`, {
             method: 'PATCH',
-            body: JSON.stringify({ reviewer_staff_id: staffId, note: note })
+            body: JSON.stringify({ reviewer_staff_id: staffId, note: note, lines: lines || [] })
         });
     },
     async rejectPR(prId, staffId, note) {
@@ -62,8 +62,8 @@ const api = {
     async createPO(data) {
         return fetchJSON(`${API_BASE}/puros`, { method: 'POST', body: JSON.stringify(data) });
     },
-    async markPOShipped(poId) {
-        return fetchJSON(`${API_BASE}/puros/${poId}/ship`, { method: 'PATCH' });
+    async markPOOnWayDelivery(poId) {
+        return fetchJSON(`${API_BASE}/puros/${poId}/on-way`, { method: 'PATCH' });
     },
     async confirmPO(poId) {
         return fetchJSON(`${API_BASE}/puros/${poId}/confirm`, { method: 'PATCH' });
@@ -124,8 +124,17 @@ const api = {
     async createSupplier(data) {
         return fetchJSON(`${API_BASE}/suppliers`, { method: 'POST', body: JSON.stringify(data) });
     },
+    async getSupplierHistoricalPrices(supplierId, lines) {
+        return fetchJSON(`${API_BASE}/suppliers/historical-prices`, {
+            method: 'POST',
+            body: JSON.stringify({ supplier_id: supplierId, lines: lines })
+        });
+    },
     async getEquipmentTypes() {
         return fetchJSON(`${API_BASE}/equipment-types`);
+    },
+    async createEquipmentType(data) {
+        return fetchJSON(`${API_BASE}/equipment-types`, { method: 'POST', body: JSON.stringify(data) });
     },
     async getMachines(nodeId) {
         return fetchJSON(`${API_BASE}/machines${nodeId ? `?node_id=${nodeId}` : ''}`);

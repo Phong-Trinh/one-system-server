@@ -130,7 +130,7 @@ const MODAL_TEMPLATES = {
         <label>Select Purchase Order</label>
         <select id="m-inv-po">
           <option value="">-- Select PO --</option>
-          ${PURCHASE_ORDERS.filter(p => p.status === 'SHIPPED' || p.status === 'CONFIRMED').map(p => `<option value="${p.id}">${p.id} - ${p.item}</option>`).join('')}
+          ${PURCHASE_ORDERS.filter(p => p.status === 'ON_WAY_DELIVERY' || p.status === 'CONFIRMED').map(p => `<option value="${p.id}">${p.id} - ${p.item}</option>`).join('')}
         </select>
       </div>
       <div class="field">

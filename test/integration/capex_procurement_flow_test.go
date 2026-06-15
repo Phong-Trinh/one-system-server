@@ -73,7 +73,22 @@ func TestCapExProcurementBusinessFlow(t *testing.T) {
 
 	t.Log("Step 1.2: HQ reviews the PR and approves it. The system automatically activates the EquipmentType 'eq_pizza_oven' in the catalog.")
 	note := "Approved for Pizza Expansion project"
-	err = facade.PR.ApprovePR(ctx, pr.ID, "staff_hq_admin", &note)
+	// Get the PR lines to approve
+	prLines, err := tc.PRLineRepo.ListByPR(ctx, pr.ID)
+	if err != nil || len(prLines) == 0 {
+		t.Fatalf("Failed to list PR lines: %v", err)
+	}
+	corrections := []services.PRLineCorrection{
+		{
+			LineID:          prLines[0].ID,
+			EquipmentTypeID: "eq_pizza_oven",
+			ExpectedCapacity: &expectedCap,
+			Qty:             1,
+			UnitOfMeasure:   "unit",
+			EstimatedPrice:  3000.0,
+		},
+	}
+	err = facade.PR.ApprovePR(ctx, pr.ID, "staff_hq_admin", &note, corrections)
 	if err != nil {
 		t.Fatalf("Failed to approve PR: %v", err)
 	}
@@ -131,7 +146,7 @@ func TestCapExProcurementBusinessFlow(t *testing.T) {
 	t.Logf("PurO #1 issued to Supplier A with ID: %s", purO.ID)
 
 	t.Log("Step 2.3: Supplier A ships the machine, but it arrives completely damaged (QtyReceived = 0)")
-	err = facade.PurO.MarkShipped(ctx, purO.ID)
+	err = facade.PurO.MarkOnWayDelivery(ctx, purO.ID)
 	if err != nil {
 		t.Fatalf("Failed to mark shipped: %v", err)
 	}
@@ -188,7 +203,7 @@ func TestCapExProcurementBusinessFlow(t *testing.T) {
 	t.Logf("PurO #2 issued to Supplier B with ID: %s", purO2.ID)
 
 	t.Log("Step 2.7: Supplier B delivers successfully. Store Manager receives it intact")
-	err = facade.PurO.MarkShipped(ctx, purO2.ID)
+	err = facade.PurO.MarkOnWayDelivery(ctx, purO2.ID)
 	if err != nil {
 		t.Fatalf("Failed to mark shipped: %v", err)
 	}
@@ -342,7 +357,22 @@ func TestCapExProcurementBusinessFlow(t *testing.T) {
 	}
 
 	noteMixer := "Approved for Bakery project"
-	err = facade.PR.ApprovePR(ctx, prMixer.ID, "staff_hq_admin", &noteMixer)
+	prMixerLines, err := tc.PRLineRepo.ListByPR(ctx, prMixer.ID)
+	if err != nil || len(prMixerLines) == 0 {
+		t.Fatalf("Failed to list PR lines for Mixer: %v", err)
+	}
+	expectedMixerCap := 50.0
+	mixerCorrections := []services.PRLineCorrection{
+		{
+			LineID:          prMixerLines[0].ID,
+			EquipmentTypeID: "eq_industrial_mixer",
+			ExpectedCapacity: &expectedMixerCap,
+			Qty:             1,
+			UnitOfMeasure:   "unit",
+			EstimatedPrice:  5000.0,
+		},
+	}
+	err = facade.PR.ApprovePR(ctx, prMixer.ID, "staff_hq_admin", &noteMixer, mixerCorrections)
 	if err != nil {
 		t.Fatalf("Failed to approve PR for Mixer: %v", err)
 	}
@@ -396,7 +426,7 @@ func TestCapExProcurementBusinessFlow(t *testing.T) {
 	}
 
 	t.Log("Step 6.6: Supplier C receives payment and ships the mixer")
-	err = facade.PurO.MarkShipped(ctx, purOMixer.ID)
+	err = facade.PurO.MarkOnWayDelivery(ctx, purOMixer.ID)
 	if err != nil {
 		t.Fatalf("MarkShipped failed: %v", err)
 	}

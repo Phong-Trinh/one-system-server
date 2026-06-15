@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"one-system-server/internal/domain/models"
 	"one-system-server/internal/domain/services"
 )
 
@@ -23,4 +24,24 @@ func (h *EquipmentTypeHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, eqTypes)
+}
+
+func (h *EquipmentTypeHandler) Create(c *gin.Context) {
+	var eqType models.EquipmentType
+	if err := c.ShouldBindJSON(&eqType); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Default status to DRAFT if not specified
+	if eqType.Status == "" {
+		eqType.Status = models.EquipmentTypeDraft
+	}
+
+	if err := h.eqTypeRepo.Create(c.Request.Context(), &eqType); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, eqType)
 }

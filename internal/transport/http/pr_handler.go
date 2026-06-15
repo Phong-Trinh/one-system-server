@@ -78,8 +78,11 @@ func (h *PRHandler) List(c *gin.Context) {
 }
 
 type ReviewRequest struct {
-	ReviewerStaffID string  `json:"reviewer_staff_id"`
-	Note            *string `json:"note"`
+	ReviewerStaffID string                     `json:"reviewer_staff_id"`
+	Note            *string                    `json:"note"`
+	// Lines carries HQ's verified corrections for each PR line.
+	// Required when approving — must cover every line in the PR.
+	Lines           []services.PRLineCorrection `json:"lines"`
 }
 
 func (h *PRHandler) Approve(c *gin.Context) {
@@ -90,13 +93,14 @@ func (h *PRHandler) Approve(c *gin.Context) {
 		return
 	}
 
-	if err := h.prService.ApprovePR(c.Request.Context(), id, req.ReviewerStaffID, req.Note); err != nil {
+	if err := h.prService.ApprovePR(c.Request.Context(), id, req.ReviewerStaffID, req.Note, req.Lines); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "PR approved"})
 }
+
 
 func (h *PRHandler) Reject(c *gin.Context) {
 	id := c.Param("id")

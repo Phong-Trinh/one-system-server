@@ -142,6 +142,7 @@ type PRLine struct {
 	UnitOfMeasure         string   `json:"unit_of_measure"`      // e.g., "unit", "set"
 	EstimatedUnitPrice    float64  `json:"estimated_unit_price"` // Requester's cost estimate
 	Justification         string   `json:"justification"`        // Per-line rationale
+	Description           string   `json:"description"`          // Detailed description/specifications of the item
 }
 
 // ─── §1.3 Purchase Order (HQ.PurO) ───────────────────────────────────────────
@@ -154,8 +155,8 @@ const (
 	PurchaseOrderDraft PurchaseOrderStatus = "DRAFT"
 	// PurchaseOrderConfirmed — HQ confirmed and sent to supplier.
 	PurchaseOrderConfirmed PurchaseOrderStatus = "CONFIRMED"
-	// PurchaseOrderShipped — supplier has dispatched goods to the destination node.
-	PurchaseOrderShipped PurchaseOrderStatus = "SHIPPED"
+	// PurchaseOrderOnWayDelivery — supplier has dispatched goods to the destination node.
+	PurchaseOrderOnWayDelivery PurchaseOrderStatus = "ON_WAY_DELIVERY"
 	// PurchaseOrderDelivered - goods have been received by the destination node, waiting for financial settlement.
 	PurchaseOrderDelivered PurchaseOrderStatus = "DELIVERED"
 	// PurchaseOrderCompleted — GoodsReceipt confirmed + 3-Way Matching done; supplier payment authorized.
@@ -205,11 +206,12 @@ type PurchaseOrder struct {
 // PurchaseOrderLine is a single item line within a PurchaseOrder.
 // Quantities are in packaging units (ordered with supplier); converted to base units on GR.
 type PurchaseOrderLine struct {
-	ID         string  `json:"id"`
-	PurOID     string  `json:"puro_id"`     // FK → PurchaseOrder
-	ItemID     *string `json:"item_id,omitempty"` // FK → Item (nil for CapEx PR_TRIGGERED)
-	EquipmentTypeID *string `json:"equipment_type_id,omitempty"` // FK → EquipmentType (used for CapEx when ItemID is nil)
-	QtyOrdered float64 `json:"qty_ordered"` // Quantity in packaging units
+	ID              string  `json:"id"`
+	PurOID          string  `json:"puro_id"`                       // FK → PurchaseOrder
+	ItemID          *string `json:"item_id,omitempty"`             // FK → Item (nil for CapEx PR_TRIGGERED)
+	EquipmentTypeID *string `json:"equipment_type_id,omitempty"`   // FK → EquipmentType (used for CapEx when ItemID is nil)
+	ExpectedCapacity *float64 `json:"expected_capacity,omitempty"` // HQ verified capacity for Equipment
+	QtyOrdered      float64 `json:"qty_ordered"`                   // Quantity in packaging units
 	PkgUnit    string  `json:"pkg_unit"`    // e.g., "case", "pallet"
 	Conversion float64 `json:"conversion"`  // Base units per pkg_unit at time of order
 	UnitPrice  float64 `json:"unit_price"`  // Price per packaging unit (from supplier quote)

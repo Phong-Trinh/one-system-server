@@ -158,6 +158,7 @@ type prLineDoc struct {
 	UnitOfMeasure         string   `bson:"unit_of_measure"`
 	EstimatedUnitPrice    float64  `bson:"estimated_unit_price"`
 	Justification         string   `bson:"justification"`
+	Description           string   `bson:"description"`
 }
 
 func prLineToDoc(line *models.PRLine) *prLineDoc {
@@ -173,6 +174,7 @@ func prLineToDoc(line *models.PRLine) *prLineDoc {
 		UnitOfMeasure:         line.UnitOfMeasure,
 		EstimatedUnitPrice:    line.EstimatedUnitPrice,
 		Justification:         line.Justification,
+		Description:           line.Description,
 	}
 }
 
@@ -189,6 +191,7 @@ func docToPRLine(d *prLineDoc) *models.PRLine {
 		UnitOfMeasure:         d.UnitOfMeasure,
 		EstimatedUnitPrice:    d.EstimatedUnitPrice,
 		Justification:         d.Justification,
+		Description:           d.Description,
 	}
 }
 
@@ -229,3 +232,27 @@ func (r *prLineRepository) ListByPR(ctx context.Context, prID string) ([]*models
 	}
 	return lines, cur.Err()
 }
+
+// UpdateLine persists HQ corrections to a PR line during the review-and-approve step.
+// Only the fields HQ is authorised to correct are updated; the original Factory
+// submission fields (PRID, ItemID, Justification) remain unchanged.
+func (r *prLineRepository) UpdateLine(ctx context.Context, line *models.PRLine) error {
+	update := bson.M{
+		"$set": bson.M{
+			"equipment_type_id":       line.EquipmentTypeID,
+			"proposed_equipment_name": line.ProposedEquipmentName,
+			"qty":                     line.Qty,
+			"unit_of_measure":         line.UnitOfMeasure,
+			"estimated_unit_price":    line.EstimatedUnitPrice,
+		},
+	}
+	res, err := r.col.UpdateOne(ctx, bson.M{"_id": line.ID}, update)
+	if err != nil {
+		return fmt.Errorf("prLineRepository.UpdateLine: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("prLineRepository.UpdateLine: line %s not found", line.ID)
+	}
+	return nil
+}
+

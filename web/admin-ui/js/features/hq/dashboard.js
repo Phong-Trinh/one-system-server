@@ -16,7 +16,7 @@ async function renderHQDashboard() {
     ]);
     
     pendingPRsCount = (prs || []).length;
-    pendingGRsCount = (puros || []).filter(p => p.status === 'SHIPPED').length;
+    pendingGRsCount = (puros || []).filter(p => p.status === 'ON_WAY_DELIVERY').length;
     pendingAssetsCount = (assets || []).filter(a => a.status === 'PENDING_REGISTRATION').length;
   } catch (err) {}
 

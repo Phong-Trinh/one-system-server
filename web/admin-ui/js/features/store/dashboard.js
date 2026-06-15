@@ -12,7 +12,7 @@ async function renderStoDashboard() {
     allPuros = puros || [];
   } catch (e) { }
 
-  const incomingDeliveries = allPuros.filter(p => p.status === 'SHIPPED');
+  const incomingDeliveries = allPuros.filter(p => p.status === 'ON_WAY_DELIVERY');
 
   const activeOrds = 0; // POS_ORDERS
 

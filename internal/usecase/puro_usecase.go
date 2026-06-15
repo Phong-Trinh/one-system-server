@@ -17,6 +17,7 @@ import (
 type PurOLineInput struct {
 	ItemID          *string `json:"item_id"`           // FK → Item (nil for CapEx lines)
 	EquipmentTypeID *string `json:"equipment_type_id"` // FK → EquipmentType (nil for OpEx lines)
+	ExpectedCapacity *float64 `json:"expected_capacity,omitempty"`
 	QtyOrdered      float64 `json:"qty_ordered"`       // In packaging units
 	PkgUnit         string  `json:"pkg_unit"`
 	Conversion      float64 `json:"conversion"`        // Base units per pkg_unit
@@ -29,9 +30,9 @@ type PurOLineInput struct {
 //
 // Two creation paths:
 //   - AUTO_DRAFT (EXTERNAL_PROCUREMENT ROP trigger): system calls CreateDraftPurO → HQ reviews →
-//     ConfirmDraftPurO → MarkShipped → GR confirmed → SettlePayment.
+//     ConfirmDraftPurO → MarkOnWayDelivery → GR confirmed → SettlePayment.
 //   - PR_TRIGGERED (CapEx): HQ calls CreatePRTriggeredPurO → starts at CONFIRMED already →
-//     MarkShipped → GR confirmed → SettlePayment → auto-creates Asset.
+//     MarkOnWayDelivery → GR confirmed → SettlePayment → auto-creates Asset.
 //
 // Authority: ONLY HQ can create a PO. DeliveryToNodeID is NEVER the HQ node.
 type PurOUseCase interface {
@@ -50,13 +51,13 @@ type PurOUseCase interface {
 	// Transitions: DRAFT → CONFIRMED.
 	ConfirmDraftPurO(ctx context.Context, purOID, supplierID, staffID string, lines []PurOLineInput) error
 
-	// MarkShipped transitions a CONFIRMED PO to SHIPPED (supplier has dispatched goods).
-	MarkShipped(ctx context.Context, purOID string) error
+	// MarkOnWayDelivery transitions a CONFIRMED PO to ON_WAY_DELIVERY (supplier has dispatched goods).
+	MarkOnWayDelivery(ctx context.Context, purOID string) error
 
 	// SettlePayment performs 3-Way Matching and marks the PO as COMPLETED.
 	// For PR_TRIGGERED POs, auto-creates an Asset record (status=PENDING_REGISTRATION).
 	// The Asset creation is performed by the injected AssetUseCase.
-	// Transitions: SHIPPED → COMPLETED.
+	// Transitions: ON_WAY_DELIVERY → COMPLETED.
 	SettlePayment(ctx context.Context, purOID, invoiceID, grID, staffID string) (*models.Asset, error)
 
 	GetPurO(ctx context.Context, purOID string) (*models.PurchaseOrder, []*models.PurchaseOrderLine, error)
@@ -64,6 +65,9 @@ type PurOUseCase interface {
 	ListByDeliveryNode(ctx context.Context, nodeID string) ([]*models.PurchaseOrder, error)
 	HasActivePurO(ctx context.Context, deliveryNodeID, itemID string) (bool, error)
 	SimpleConfirmPurO(ctx context.Context, purOID, staffID string) error
+
+	// GetHistoricalPrice returns the most recent unit price paid to a specific supplier for an item or equipment type.
+	GetHistoricalPrice(ctx context.Context, supplierID string, itemID *string, equipmentTypeID *string) (float64, error)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -192,6 +196,7 @@ func (uc *purOUseCase) CreatePRTriggeredPurO(ctx context.Context, prID, supplier
 			PurOID:          purO.ID,
 			ItemID:          l.ItemID,
 			EquipmentTypeID: l.EquipmentTypeID,
+			ExpectedCapacity: l.ExpectedCapacity,
 			QtyOrdered:      l.QtyOrdered,
 			PkgUnit:         l.PkgUnit,
 			Conversion:      l.Conversion,
@@ -244,6 +249,7 @@ func (uc *purOUseCase) ConfirmDraftPurO(ctx context.Context, purOID, supplierID,
 			PurOID:          purOID,
 			ItemID:          l.ItemID,
 			EquipmentTypeID: l.EquipmentTypeID,
+			ExpectedCapacity: l.ExpectedCapacity,
 			QtyOrdered:      l.QtyOrdered,
 			PkgUnit:         l.PkgUnit,
 			Conversion:      l.Conversion,
@@ -283,17 +289,17 @@ func (uc *purOUseCase) SimpleConfirmPurO(ctx context.Context, purOID, staffID st
 	return uc.purORepo.Update(ctx, purO)
 }
 
-// ── MarkShipped ───────────────────────────────────────────────────────────────
+// ── MarkOnWayDelivery ───────────────────────────────────────────────────────────────
 
-func (uc *purOUseCase) MarkShipped(ctx context.Context, purOID string) error {
+func (uc *purOUseCase) MarkOnWayDelivery(ctx context.Context, purOID string) error {
 	purO, err := uc.loadPurO(ctx, purOID)
 	if err != nil {
 		return err
 	}
 	if purO.Status != models.PurchaseOrderConfirmed {
-		return fmt.Errorf("po: MarkShipped: PO %s is not CONFIRMED (current: %s)", purOID, purO.Status)
+		return fmt.Errorf("po: MarkOnWayDelivery: PO %s is not CONFIRMED (current: %s)", purOID, purO.Status)
 	}
-	purO.Status = models.PurchaseOrderShipped
+	purO.Status = models.PurchaseOrderOnWayDelivery
 	purO.UpdatedAt = time.Now()
 	return uc.purORepo.Update(ctx, purO)
 }
@@ -383,3 +389,8 @@ func (uc *purOUseCase) loadPurO(ctx context.Context, id string) (*models.Purchas
 	}
 	return purO, nil
 }
+
+func (uc *purOUseCase) GetHistoricalPrice(ctx context.Context, supplierID string, itemID *string, eqTypeID *string) (float64, error) {
+	return uc.lineRepo.GetHistoricalPrice(ctx, supplierID, itemID, eqTypeID)
+}
+

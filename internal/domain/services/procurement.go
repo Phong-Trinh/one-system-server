@@ -22,8 +22,10 @@ type PRService interface {
 	SubmitPR(ctx context.Context, req SubmitPRRequest) (*models.PurchaseRequisition, error)
 
 	// ApprovePR is called by HQ to approve a pending PR.
+	// HQ must supply corrections for all lines — the corrected values are written back to the
+	// PR lines before the status is transitioned to APPROVED.
 	// Sets status = APPROVED. Does NOT create a PO — that is a separate step.
-	ApprovePR(ctx context.Context, prID, reviewerStaffID string, note *string) error
+	ApprovePR(ctx context.Context, prID, reviewerStaffID string, note *string, corrections []PRLineCorrection) error
 
 	// RejectPR is called by HQ to reject a pending PR with a mandatory reason.
 	RejectPR(ctx context.Context, prID, reviewerStaffID, reason string) error
@@ -59,4 +61,17 @@ type PRLineInput struct {
 	UnitOfMeasure         string   `json:"unit_of_measure"`
 	EstimatedUnitPrice    float64  `json:"estimated_unit_price"`
 	Justification         string   `json:"justification"`
+	Description           string   `json:"description"`
+}
+
+// PRLineCorrection carries HQ's verified corrections for a single PR line.
+// Submitted by HQ as part of the approve request; written back to the PR line
+// before status transition so the PR becomes the authoritative source of truth.
+type PRLineCorrection struct {
+	LineID          string  `json:"line_id"`           // ID of the PRLine to correct
+	EquipmentTypeID string  `json:"equipment_type_id"` // HQ-verified equipment type (must exist in catalog)
+	ExpectedCapacity *float64 `json:"expected_capacity,omitempty"` // HQ-verified capacity
+	Qty             float64 `json:"qty"`               // HQ-confirmed quantity
+	UnitOfMeasure   string  `json:"unit_of_measure"`   // HQ-confirmed unit
+	EstimatedPrice  float64 `json:"estimated_unit_price"` // HQ-confirmed price estimate
 }

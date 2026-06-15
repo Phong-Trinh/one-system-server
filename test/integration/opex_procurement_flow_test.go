@@ -95,10 +95,10 @@ func TestOpExProcurementBusinessFlow(t *testing.T) {
 		t.Errorf("Expected PO status CONFIRMED, got %s", poUpdated.Status)
 	}
 
-	t.Log("Step 5: Supplier ships the goods.")
-	err = facade.PurO.MarkShipped(ctx, po.ID)
+	t.Log("Step 2.3: Supplier receives PO and ships goods")
+	err = facade.PurO.MarkOnWayDelivery(ctx, po.ID)
 	if err != nil {
-		t.Fatalf("MarkShipped failed: %v", err)
+		t.Fatalf("MarkOnWayDelivery failed: %v", err)
 	}
 
 	t.Log("Step 6: Store receives goods via GoodsReceipt.")
