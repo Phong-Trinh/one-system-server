@@ -61,7 +61,7 @@ func New(ctx context.Context) (*App, error) {
 	poRepo := mongorepo.NewProductionOrderRepository(mongoClient, dbName)
 	batchRepo := mongorepo.NewProductionBatchRepository(mongoClient, dbName)
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
-	itemCapacityConfigRepo := mongorepo.NewItemCapacityConfigRepository(mongoClient, dbName)
+
 	nodeItemConfigRepo := mongorepo.NewNodeItemConfigRepository(mongoClient, dbName)
 	
 	// Supply Chain Repositories
@@ -94,7 +94,7 @@ func New(ctx context.Context) (*App, error) {
 	staffUC := usecase.NewStaffUseCase(staffRepo, nodeRepo)
 	productionUC := usecase.NewProductionUseCase(poRepo, bomRepo, sopRepo, nodeRepo)
 	itemUC := usecase.NewItemUseCase(itemRepo)
-	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo, itemCapacityConfigRepo)
+	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
 
 	// ── Orchestrator (Auto-Decomposition Engine) ─────────────────────────────
 	orchestratorCfg := usecase.DefaultOrchestratorConfig()
@@ -155,7 +155,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	// ── Seed Kitchen Demo Data (Station types, Machines, Items, BOMs, SOPs) ──
-	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo, itemCapacityConfigRepo); err != nil {
+	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo); err != nil {
 		log.Error().Err(err).Msg("failed to seed kitchen demo data")
 	}
 
@@ -179,7 +179,7 @@ func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, node
 	// 2. Ensure Nodes exist (1 HQ, 1 Factory, 1 Store at the same site)
 	nodes := []models.Node{
 		{ID: "HQ", OrgID: orgId, Type: models.NodeHQ, Name: "Headquarters", Address: "123 Main St", SiteID: &siteId},
-		{ID: "FACTORY", OrgID: orgId, Type: models.NodeFactory, Name: "Central Kitchen", Address: "123 Main St", SiteID: &siteId},
+		{ID: "FACTORY", OrgID: orgId, Type: models.NodeFactory, Name: "Factory", Address: "123 Main St", SiteID: &siteId},
 		{ID: "STORE", OrgID: orgId, Type: models.NodeStore, Name: "Store #1", Address: "123 Main St", SiteID: &siteId},
 		{ID: "CUA_HANG_01", OrgID: orgId, Type: models.NodeStore, Name: "SnapBite # Hoàng Hoa Thám", Address: "123 Hoàng Hoa Thám, Ba Đình, Hà Nội"},
 	}

@@ -6,9 +6,9 @@
 async function renderHQInvoices() {
   return `
     ${pageHeader(
-      'Supplier Invoices',
-      'Finance overview: 3-Way Match (PO + GR + Invoice) and Prepayment'
-    )}
+    'Supplier Invoices',
+    'Finance overview: 3-Way Match (PO + GR + Invoice) and Prepayment'
+  )}
     <div class="card p-0">
       <div class="table-wrap">
         <div class="p-4 dim text-center">
@@ -114,7 +114,7 @@ async function submitRecordInvoice() {
 
   const lines = _invoiceTargetPO.lines.map((l, idx) => {
     const unitPrice = parseFloat(document.getElementById(`inv-unit-price-${idx}`)?.value) || l.unit_price;
-    const qty       = parseFloat(document.getElementById(`inv-qty-${idx}`)?.value) || l.qty_ordered;
+    const qty = parseFloat(document.getElementById(`inv-qty-${idx}`)?.value) || l.qty_ordered;
     return {
       item_id: l.item_id || undefined,
       raw_line_text: l.item_id || l.equipment_type_id || `Line ${idx + 1}`,
@@ -151,31 +151,134 @@ async function submitRecordInvoice() {
 
 async function openThreeWayMatchModal(invoiceId, poId) {
   try {
-    // We need the GR linked to this PO — fetch all GRs via the PO's delivery node
-    // The GR ref_id equals the poId, so we load the PO to get the gr detail
     const poRes = await api.getPO(poId);
     const po = poRes.po;
+    const poLines = poRes.lines || [];
+
+    const invRes = await api.getInvoice(invoiceId);
+    const invoice = invRes.invoice || invRes;
+    const invLines = invRes.lines || [];
+
+    const grsRes = await api.getGRsByPO(poId);
+    let gr = null;
+    let grLines = [];
+    if (grsRes && grsRes.length > 0) {
+      gr = grsRes[0];
+      const grDetail = await api.getGR(gr.id);
+      grLines = grDetail.lines || [];
+    }
+
+    const itemKeys = new Set([
+      ...poLines.map(l => l.item_id || l.equipment_type_id),
+      ...invLines.map(l => l.item_id || l.raw_line_text),
+      ...grLines.map(l => l.item_id)
+    ].filter(Boolean));
+
+    const rowsHtml = Array.from(itemKeys).map(itemId => {
+      const pl = poLines.find(l => (l.item_id || l.equipment_type_id) === itemId) || {};
+
+      let il = invLines.find(l => (l.item_id || l.raw_line_text) === itemId);
+      if (!il && invLines.length === 1 && poLines.length === 1) il = invLines[0];
+      il = il || {};
+
+      let gl = grLines.find(l => l.item_id === itemId);
+      if (!gl && grLines.length === 1 && poLines.length === 1) gl = grLines[0];
+      gl = gl || {};
+
+      const expQty = pl.qty_ordered ? (pl.qty_ordered * pl.conversion) : 0;
+      const recQty = gl.qty_received || 0;
+      const damQty = gl.qty_damaged || 0;
+      const invQty = il.qty || 0;
+      const poUnitPrice = pl.unit_price || 0;
+      const invUnitPrice = il.unit_price || 0;
+
+      // Highlight discrepancies
+      const hasDiscrepancy = (expQty !== invQty) || (recQty < invQty) || (damQty > 0);
+      const rowStyle = hasDiscrepancy ? 'background: var(--red-faint)' : '';
+
+      return `
+        <tr style="${rowStyle}">
+          <td><strong>${itemId}</strong></td>
+          <td>
+            <div>${expQty}</div>
+            <div class="faint small">${fmt(poUnitPrice)}</div>
+          </td>
+          <td>
+            <div style="color: ${recQty < expQty ? 'var(--amber)' : 'inherit'}">${recQty} Usable</div>
+            ${damQty > 0 ? `<div class="small red">${damQty} Damaged</div>` : ''}
+          </td>
+          <td>
+            <div style="color: ${invQty > recQty ? 'var(--red)' : 'inherit'}">${invQty}</div>
+            <div class="faint small">${fmt(invUnitPrice)}</div>
+          </td>
+          <td class="text-right"><strong>${fmt(invQty * invUnitPrice)}</strong></td>
+        </tr>
+      `;
+    }).join('');
+
+    const poTotal = poLines.reduce((sum, l) => sum + (l.qty_ordered * l.unit_price), 0);
 
     const mc = document.getElementById('modal-container');
     mc.classList.remove('hidden');
     mc.innerHTML = `
       <div class="modal-overlay" onclick="handleOverlayClick(event)">
-        <div class="modal" style="max-width:520px">
+        <div class="modal" style="max-width:960px">
           <div class="modal-header">
-            <h3>✅ 3-Way Match</h3>
+            <h3>✅ 3-Way Match Validation</h3>
             <button class="modal-close" onclick="closeModal()">✕</button>
           </div>
           <div class="flex col gap-16">
-            <p class="dim">Match PO <code>${poId.split('-')[0]}</code> · Invoice <code>${invoiceId.split('-')[0]}</code></p>
+            <div class="grid-3 gap-16 mb-8">
+              <div class="card p-12">
+                <div class="small dim mb-4">1. Purchase Order</div>
+                <div><strong>${poId.split('-')[0]}</strong></div>
+                <div class="small mt-4">Date: ${new Date(po.created_at).toLocaleDateString()}</div>
+                <div class="small">Supplier: ${po.supplier_id}</div>
+                <div class="small">Delivery To: ${po.delivery_to_node_id}</div>
+                <div class="small mt-4">Total: <strong>${fmt(poTotal)}</strong></div>
+              </div>
+              <div class="card p-12" style="${!gr ? 'border-color: var(--amber)' : ''}">
+                <div class="small dim mb-4">2. Goods Receipt</div>
+                <div><strong>${gr ? gr.id.split('-')[0] : '<span class="amber">Pending Delivery</span>'}</strong></div>
+                ${gr ? `<div class="small mt-4">Date: ${new Date(gr.received_at || gr.created_at).toLocaleDateString()}</div>` : ''}
+                ${gr ? `<div class="small">Status: ${statusBadge(gr.status)}</div>` : ''}
+                ${gr ? `<div class="small">Received By: ${gr.received_by || 'Unknown'}</div>` : ''}
+                ${gr && gr.notes ? `<div class="small faint mt-4">Notes: ${gr.notes}</div>` : ''}
+              </div>
+              <div class="card p-12">
+                <div class="small dim mb-4">3. Supplier Invoice</div>
+                <div><strong>${invoice.invoice_number || invoiceId.split('-')[0]}</strong></div>
+                <div class="small mt-4">Date: ${new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}</div>
+                <div class="small">Status: ${statusBadge(invoice.status || 'PENDING')}</div>
+                <div class="small mt-4">Total: <strong>${fmt(invoice.total_amount)}</strong></div>
+                <div class="small faint">(Inc. Tax: ${fmt(invoice.tax_amount)})</div>
+              </div>
+            </div>
 
             <div class="field">
-              <label>Goods Receipt ID *</label>
-              <input type="text" id="match-gr-id" placeholder="Paste the GR ID from the Factory receipt" style="font-family:monospace" />
-              <small class="dim">The GR was recorded by the Factory when goods arrived.</small>
+              <label>Detailed Line Item Comparison</label>
+              <div class="table-wrap">
+                <table style="font-size: 13px;">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>PO (Ordered / Price)</th>
+                      <th>GR (Received)</th>
+                      <th>Invoice (Billed / Price)</th>
+                      <th class="text-right">Inv Line Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="5" class="text-center dim py-4">No lines found.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div class="flex gap-16 mt-8">
-              <button class="btn btn-primary" onclick="submitThreeWayMatch('${invoiceId}')">Perform 3-Way Match</button>
+              <button class="btn btn-primary" ${!gr ? 'disabled' : ''} onclick="submitThreeWayMatch('${invoiceId}', '${gr ? gr.id : ''}')">
+                ${!gr ? 'Waiting for Goods Receipt' : 'Confirm 3-Way Match'}
+              </button>
               <button class="btn btn-outline" onclick="closeModal()">Later</button>
             </div>
           </div>
@@ -187,9 +290,8 @@ async function openThreeWayMatchModal(invoiceId, poId) {
   }
 }
 
-async function submitThreeWayMatch(invoiceId) {
-  const grId = document.getElementById('match-gr-id').value.trim();
-  if (!grId) { toast('GR ID is required', 'error'); return; }
+async function submitThreeWayMatch(invoiceId, grId) {
+  if (!grId) { toast('No Goods Receipt available to match', 'error'); return; }
 
   try {
     await api.match3Way(invoiceId, grId, state.currentUser.staffId);

@@ -38,6 +38,8 @@ type sopStepDoc struct {
 	IngredientBOMLineIDs []string `bson:"ingredient_bom_line_ids"`
 	Duration             int      `bson:"duration"`
 	Description          string   `bson:"description"`
+	SlotConsumption      float64  `bson:"slot_consumption"`
+	AllowMix             bool     `bson:"allow_mix"`
 }
 
 func sopToDoc(s *models.SOP) *sopDoc {
@@ -58,6 +60,8 @@ func sopStepToDoc(s *models.SOPStep) *sopStepDoc {
 		IngredientBOMLineIDs: s.IngredientBOMLineIDs,
 		Duration:             s.Duration,
 		Description:          s.Description,
+		SlotConsumption:      s.SlotConsumption,
+		AllowMix:             s.AllowMix,
 	}
 }
 
@@ -71,6 +75,8 @@ func docToSOPStep(d *sopStepDoc) *models.SOPStep {
 		IngredientBOMLineIDs: d.IngredientBOMLineIDs,
 		Duration:             d.Duration,
 		Description:          d.Description,
+		SlotConsumption:      d.SlotConsumption,
+		AllowMix:             d.AllowMix,
 	}
 }
 

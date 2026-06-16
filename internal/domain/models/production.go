@@ -50,6 +50,10 @@ type SOPStep struct {
 	IngredientBOMLineIDs []string `json:"ingredient_bom_line_ids"`
 	Duration             int      `json:"duration"`     // Estimated duration in seconds
 	Description          string   `json:"description"`  // Human-readable instruction for staff
+	
+	// Bin-packing inputs for allocation engine
+	SlotConsumption float64 `json:"slot_consumption"` // How much machine capacity one unit of target output requires
+	AllowMix        bool    `json:"allow_mix"`        // Whether this step can share a machine batch with other orders
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────

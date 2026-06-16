@@ -29,7 +29,7 @@ async function renderFacPR() {
         <label>Equipment Type</label>
         <select id="pr-eq-type" onchange="toggleNewEquipmentType()">
           <option value="">-- Select Equipment Type --</option>
-          ${eqTypes.filter(e => e.status === 'ACTIVE').map(eq => `<option value="${eq.id}">${eq.name}</option>`).join('')}
+          ${eqTypes.filter(e => e.status === 'ACTIVE').map(eq => `<option value="${eq.id}" data-unit="${eq.capacity_unit || ''}">${eq.name}</option>`).join('')}
           <option value="NEW">➕ Request New Equipment Type...</option>
         </select>
       </div>
@@ -47,7 +47,7 @@ async function renderFacPR() {
 
       <div class="grid-2" style="margin-top:16px">
         <div class="field">
-          <label>Expected Capacity</label>
+          <label>Expected Capacity <span id="pr-exp-cap-unit-label" class="dim" style="font-weight: normal;"></span></label>
           <input type="number" id="pr-exp-cap" placeholder="e.g., 4.0">
         </div>
         <div class="field">
@@ -170,10 +170,21 @@ async function renderFacPR() {
 }
 
 function toggleNewEquipmentType() {
-  const sel = document.getElementById('pr-eq-type').value;
+  const sel = document.getElementById('pr-eq-type');
   const f = document.getElementById('new-eq-fields');
-  if (sel === 'NEW') f.classList.remove('hidden');
-  else f.classList.add('hidden');
+  const unitLabel = document.getElementById('pr-exp-cap-unit-label');
+
+  if (sel.value === 'NEW') {
+    f.classList.remove('hidden');
+    if (unitLabel) unitLabel.textContent = '';
+  } else {
+    f.classList.add('hidden');
+    const opt = sel.options[sel.selectedIndex];
+    const unit = opt ? opt.getAttribute('data-unit') : '';
+    if (unitLabel) {
+      unitLabel.textContent = unit ? `(${unit})` : '';
+    }
+  }
 }
 
 async function submitFacPR() {

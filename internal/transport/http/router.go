@@ -213,6 +213,7 @@ func NewRouter(
 		grs := v1.Group("/grs")
 		{
 			grs.POST("", grH.ConfirmPurO)
+			grs.GET("", grH.List)
 			grs.GET("/:id", grH.GetByID)
 		}
 
@@ -241,6 +242,7 @@ func NewRouter(
 		eqTypeH := newEquipmentTypeHandler(eqTypeRepo)
 		v1.GET("/equipment-types", eqTypeH.List)
 		v1.POST("/equipment-types", eqTypeH.Create)
+		v1.PUT("/equipment-types/:id", eqTypeH.Update)
 	}
 
 	return &Router{engine: engine}

@@ -50,7 +50,7 @@ async function renderHQDashboard() {
         <h3>Node Status</h3>
         <p class="dim" style="margin-top:8px">Operational health</p>
         <ul style="margin-top:16px; line-height:2">
-          <li><strong>Central Kitchen:</strong> Running normally</li>
+          <li><strong>Factory:</strong> Running normally</li>
           <li><strong>Nobi Fried Chicken:</strong> 3 ROP alerts</li>
         </ul>
       </div>

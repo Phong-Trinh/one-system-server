@@ -85,6 +85,9 @@ const api = {
     async getGR(grId) {
         return fetchJSON(`${API_BASE}/grs/${grId}`);
     },
+    async getGRsByPO(poId) {
+        return fetchJSON(`${API_BASE}/grs?puro_id=${poId}`);
+    },
 
     // ── Invoices ──
     async recordInvoice(data) {
@@ -135,6 +138,9 @@ const api = {
     },
     async createEquipmentType(data) {
         return fetchJSON(`${API_BASE}/equipment-types`, { method: 'POST', body: JSON.stringify(data) });
+    },
+    async updateEquipmentType(id, data) {
+        return fetchJSON(`${API_BASE}/equipment-types/${id}`, { method: 'PUT', body: JSON.stringify(data) });
     },
     async getMachines(nodeId) {
         return fetchJSON(`${API_BASE}/machines${nodeId ? `?node_id=${nodeId}` : ''}`);

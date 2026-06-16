@@ -9,7 +9,7 @@ This document summarizes the core business logic and workflows designed for the 
 - **Tenant (ORG)**: A chain organization (e.g., "Nobi Fried Chicken").
 - **HQ**: Central governance for all financial and operational data. **Owns procurement authority** — HQ is the sole node authorized to review Purchase Requisitions (PR) and raise Purchase Orders (`HQ.PurO`) to external suppliers.
 - **Store**: Point of sale and local production (kitchen). Stores do **not** perform external procurement. They issue Replenishment Orders (`S.RO`) for internal restocking (from Factory or other Stores) and Purchase Requisitions (`S.PR`) to HQ for CapEx/exceptional needs.
-- **Factory (Central Kitchen)**: Large-scale production and distribution of semi-products and finished products. Issues `F.RO` for raw materials and `F.PR` for CapEx to HQ. Receives materials from `HQ.PurO`-linked deliveries. *(v1 supports a single Factory per Tenant. Multi-factory support is deferred to a future phase.)*
+- **Factory**: Large-scale production and distribution of semi-products and finished products. Issues `F.RO` for raw materials and `F.PR` for CapEx to HQ. Receives materials from `HQ.PurO`-linked deliveries. *(v1 supports a single Factory per Tenant. Multi-factory support is deferred to a future phase.)*
 
 ### Item Classification
 

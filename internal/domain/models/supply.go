@@ -310,6 +310,8 @@ type GoodsReceipt struct {
 	RefID           string              `json:"ref_id"`            // FK → ITO.ID or PurchaseOrder.ID
 	ReceivingNodeID string              `json:"receiving_node_id"` // FK → Node
 	Status          GoodsReceiptStatus  `json:"status"`
+	Notes           string              `json:"notes,omitempty"`             // General delivery notes
+	DeliveryNoteURL string              `json:"delivery_note_url,omitempty"` // Photo of physical delivery note
 	ReceivedBy      string              `json:"received_by"` // FK → Staff
 	ReceivedAt      *time.Time          `json:"received_at,omitempty"`
 	CreatedAt       time.Time           `json:"created_at"`
@@ -346,12 +348,14 @@ type DiscrepancyTicket struct {
 	ItemID     string                  `json:"item_id"`     // FK → Item
 	QtyMissing float64                 `json:"qty_missing"` // QtyExpected − QtyReceived (base units)
 	QtyDamaged float64                 `json:"qty_damaged"` // Quantity received but unusable
-	Status     DiscrepancyTicketStatus `json:"status"`
-	Resolution *string                 `json:"resolution,omitempty"`  // HQ resolution notes
-	ResolvedBy *string                 `json:"resolved_by,omitempty"` // FK → Staff (HQ)
-	ResolvedAt *time.Time              `json:"resolved_at,omitempty"`
-	CreatedAt  time.Time               `json:"created_at"`
-	UpdatedAt  time.Time               `json:"updated_at"`
+	Status         DiscrepancyTicketStatus `json:"status"`
+	ReportedReason string                  `json:"reported_reason,omitempty"` // Explanation from receiving staff
+	EvidenceURL    string                  `json:"evidence_url,omitempty"`    // Photo evidence of damaged goods
+	Resolution     *string                 `json:"resolution,omitempty"`      // HQ resolution notes
+	ResolvedBy     *string                 `json:"resolved_by,omitempty"`     // FK → Staff (HQ)
+	ResolvedAt     *time.Time              `json:"resolved_at,omitempty"`
+	CreatedAt      time.Time               `json:"created_at"`
+	UpdatedAt      time.Time               `json:"updated_at"`
 }
 
 // ─── §1.4 B2B Sales Order (Wholesale Fulfillment) ────────────────────────────

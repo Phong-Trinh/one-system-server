@@ -146,10 +146,15 @@ func (h *itoHandler) GoodsReceipt(c *gin.Context) {
 	var req struct {
 		GoodsIssueID      string `json:"goods_issue_id" binding:"required"`
 		ReceivedByStaffID string `json:"received_by_staff_id" binding:"required"`
+		Notes             string `json:"notes"`
+		DeliveryNoteURL   string `json:"delivery_note_url"`
 		Lines             []struct {
 			ItemID      string  `json:"item_id" binding:"required"`
 			QtyExpected float64 `json:"qty_expected" binding:"required"`
-			QtyReceived float64 `json:"qty_received" binding:"required"`
+			QtyReceived float64 `json:"qty_received"` // Can be 0 if all missing/damaged
+			QtyDamaged  float64 `json:"qty_damaged"`
+			Reason      string  `json:"reason"`
+			EvidenceURL string  `json:"evidence_url"`
 		} `json:"lines" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -163,11 +168,16 @@ func (h *itoHandler) GoodsReceipt(c *gin.Context) {
 			ItemID:      l.ItemID,
 			QtyExpected: l.QtyExpected,
 			QtyReceived: l.QtyReceived,
+			QtyDamaged:  l.QtyDamaged,
+			Reason:      l.Reason,
+			EvidenceURL: l.EvidenceURL,
 		}
 	}
 
 	gr, err := h.uc.ConfirmGoodsReceipt(c.Request.Context(), c.Param("id"), req.GoodsIssueID, usecase.GoodsReceiptInput{
 		ReceivedByStaffID: req.ReceivedByStaffID,
+		Notes:             req.Notes,
+		DeliveryNoteURL:   req.DeliveryNoteURL,
 		Lines:             grLines,
 	})
 	if err != nil {

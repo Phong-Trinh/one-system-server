@@ -152,6 +152,7 @@ func (uc *prUseCase) ApprovePR(ctx context.Context, prID, reviewerStaffID string
 		line.EquipmentTypeID = &eqTypeID
 		line.ExpectedCapacity = c.ExpectedCapacity
 		line.ProposedEquipmentName = nil // HQ has verified; clear the free-text field
+		line.ProposedCapacityUnit = nil  // Also clear proposed unit!
 		line.Qty = c.Qty
 		line.UnitOfMeasure = c.UnitOfMeasure
 		line.EstimatedUnitPrice = c.EstimatedPrice

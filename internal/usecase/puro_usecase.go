@@ -327,7 +327,7 @@ func (uc *purOUseCase) SettlePayment(ctx context.Context, purOID, invoiceID, grI
 
 	// Auto-create Asset for CapEx (PR_TRIGGERED) POs only.
 	if purO.TriggerType == models.PurOTriggerPR && uc.assetUC != nil {
-		asset, err := uc.assetUC.AutoCreateAsset(ctx, purOID, grID)
+		asset, err := uc.assetUC.AutoCreateAsset(ctx, purOID, grID, invoiceID)
 		if err != nil {
 			return nil, fmt.Errorf("po: SettlePayment: auto-create asset: %w", err)
 		}

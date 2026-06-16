@@ -13,10 +13,10 @@ import (
 
 // InvoiceLineInput is a single line item on a supplier invoice.
 type InvoiceLineInput struct {
-	ItemID      *string // May be nil if the line cannot be matched to a catalog item
-	RawLineText string  // Original text from OCR or supplier document
-	Qty         float64
-	UnitPrice   float64
+	ItemID      *string `json:"item_id"`       // May be nil if the line cannot be matched to a catalog item
+	RawLineText string  `json:"raw_line_text"` // Original text from OCR or supplier document
+	Qty         float64 `json:"qty"`
+	UnitPrice   float64 `json:"unit_price"`
 }
 
 // InvoiceUseCase manages supplier invoices and 3-Way Matching.

@@ -41,9 +41,10 @@ type GILineInput struct {
 	QtyIssued float64 // Base units dispatched
 }
 
-// GoodsReceiptInput carries receipt details when the requester confirms receipt.
 type GoodsReceiptInput struct {
 	ReceivedByStaffID string
+	Notes             string
+	DeliveryNoteURL   string
 	Lines             []GRLineInput
 }
 
@@ -51,7 +52,10 @@ type GoodsReceiptInput struct {
 type GRLineInput struct {
 	ItemID      string  `json:"item_id"`
 	QtyExpected float64 `json:"qty_expected"` // Base units expected (from GI)
-	QtyReceived float64 `json:"qty_received"` // Base units actually received (may be less due to transit damage)
+	QtyReceived float64 `json:"qty_received"` // Base units actually usable
+	QtyDamaged  float64 `json:"qty_damaged"`  // Base units received but damaged
+	Reason      string  `json:"reason"`       // Reason for discrepancy
+	EvidenceURL string  `json:"evidence_url"` // Photo of damaged goods
 }
 
 // ── Interface ─────────────────────────────────────────────────────────────────
@@ -379,6 +383,8 @@ func (uc *itoUseCase) ConfirmGoodsReceipt(ctx context.Context, itoID string, giI
 		RefID:           itoID,
 		ReceivingNodeID: ito.RequesterNodeID,
 		Status:          grStatus,
+		Notes:           input.Notes,
+		DeliveryNoteURL: input.DeliveryNoteURL,
 		ReceivedBy:      input.ReceivedByStaffID,
 		ReceivedAt:      &now,
 		CreatedAt:       now,
@@ -410,15 +416,22 @@ func (uc *itoUseCase) ConfirmGoodsReceipt(ctx context.Context, itoID string, giI
 
 		// Auto-create DiscrepancyTicket for any line with a shortage.
 		if l.QtyReceived < l.QtyExpected {
+			// Missing = Expected - Usable Received - Damaged
+			qtyMissing := l.QtyExpected - l.QtyReceived - l.QtyDamaged
+			if qtyMissing < 0 {
+				qtyMissing = 0
+			}
 			dt := &models.DiscrepancyTicket{
-				ID:         uuid.NewString(),
-				GRID:       gr.ID,
-				ItemID:     l.ItemID,
-				QtyMissing: l.QtyExpected - l.QtyReceived,
-				QtyDamaged: 0,
-				Status:     models.DiscrepancyOpen,
-				CreatedAt:  now,
-				UpdatedAt:  now,
+				ID:             uuid.NewString(),
+				GRID:           gr.ID,
+				ItemID:         l.ItemID,
+				QtyMissing:     qtyMissing,
+				QtyDamaged:     l.QtyDamaged,
+				Status:         models.DiscrepancyOpen,
+				ReportedReason: l.Reason,
+				EvidenceURL:    l.EvidenceURL,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			}
 			if err := uc.dtRepo.Create(ctx, dt); err != nil {
 				return nil, fmt.Errorf("ito: ConfirmGoodsReceipt: create DiscrepancyTicket item %s: %w", l.ItemID, err)

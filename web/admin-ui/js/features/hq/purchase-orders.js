@@ -219,7 +219,7 @@ async function openConvertPRModal(prId) {
                   <tr>
                     <td>
                       ${l.proposed_equipment_name || l.equipment_type_id || l.item_id || 'Unknown'}
-                      ${l.expected_capacity !== undefined ? `<br><span class="dim small" style="display:flex; align-items:center; gap:4px; margin-top:4px;">Capacity: <input type="number" id="po-cap-${idx}" value="${l.expected_capacity}" style="width:60px; font-size:11px; padding:2px;" step="0.1" min="0" /> ${l.proposed_capacity_unit || (eqTypes.find(e => e.id === l.equipment_type_id)?.capacity_unit) || 'unit'}</span>` : ''}
+                      ${l.expected_capacity !== undefined ? `<br><span class="dim small" style="display:flex; align-items:center; gap:4px; margin-top:4px;">Capacity: <input type="number" id="po-cap-${idx}" value="${l.expected_capacity}" style="width:60px; font-size:11px; padding:2px;" step="0.1" min="0" /> ${(eqTypes.find(e => e.id === l.equipment_type_id)?.capacity_unit) || l.proposed_capacity_unit || 'unit'}</span>` : ''}
                     </td>
                     <td><input type="number" id="po-qty-${idx}" value="${l.qty}" style="width:70px" /></td>
                     <td><input type="text"   id="po-unit-${idx}" value="${l.unit_of_measure}" style="width:70px" /></td>
@@ -278,6 +278,17 @@ function renderQuotePanel() {
     const total = quoteLines.reduce((sum, l, idx) => sum + (l.qty || 1) * (prices[idx] || 0), 0);
     return { id: s.id, name: s.name, prices, total };
   });
+
+  const hasAnyQuote = totals.some(t => t.prices.some(p => p > 0));
+  if (!hasAnyQuote) {
+    return `
+      <div style="padding: 32px 16px; text-align: center; color: var(--text-faint); border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg-alt);">
+        <div style="font-size: 24px; margin-bottom: 8px;">📭</div>
+        <div style="font-weight: 500; color: var(--text-dim); margin-bottom: 4px;">No Historical Data</div>
+        <div style="font-size: 13px;">There are no previous quotes from any suppliers for these items.<br>Please select your preferred supplier directly below.</div>
+      </div>
+    `;
+  }
 
   // Sort by total ascending to get ranks
   const sorted = [...totals].sort((a, b) => a.total - b.total);

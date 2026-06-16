@@ -31,7 +31,7 @@ func setupBaseData(t *testing.T) *BaseData {
 	bd.Org = &Organization{ID: "org_1", Name: "OneSystem Burger Chain", CreatedAt: now}
 	
 	bd.HQ = &Node{ID: "node_hq", OrgID: bd.Org.ID, Type: NodeHQ, Name: "HQ Office"}
-	bd.Factory = &Node{ID: "node_f1", OrgID: bd.Org.ID, Type: NodeFactory, Name: "Central Kitchen"}
+	bd.Factory = &Node{ID: "node_f1", OrgID: bd.Org.ID, Type: NodeFactory, Name: "Factory"}
 	bd.Store = &Node{ID: "node_s1", OrgID: bd.Org.ID, Type: NodeStore, Name: "Downtown Store"}
 	
 	bd.HQAdmin = &Staff{ID: "staff_hq_1", NodeID: bd.HQ.ID, Name: "Alice (HQ Admin)"}

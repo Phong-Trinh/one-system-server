@@ -93,6 +93,7 @@ func NewSupplyChainFacade(repos SupplyChainRepos) *SupplyChainFacade {
 		repos.GR,
 		repos.PR,
 		repos.PRLine,
+		repos.InvoiceLine,
 	)
 
 	giUC := newGIUseCase(repos.GI, repos.GILine, inv)

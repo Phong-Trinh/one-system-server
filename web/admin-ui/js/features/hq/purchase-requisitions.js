@@ -159,15 +159,36 @@ async function openReviewPRModal(prId) {
             <div class="rl-section-label hq">HQ Verified</div>
             <div class="field" style="margin-bottom:10px">
               <label>Equipment Type</label>
-              <select id="rev-eq-${idx}" style="font-size:13px; margin-bottom: 6px;" onchange="updateCapacityUnit(${idx}, this.value)">
-                <option value="">-- Select equipment type --</option>
-                ${eqOptions}
-              </select>
-              ${(isProposed && !l.equipment_type_id) ? `
-                <button class="btn btn-ghost" style="font-size:11px; padding: 2px 6px;" onclick="createDraftEquipmentFromPR(${idx}, '${l.proposed_equipment_name}', '${l.proposed_capacity_unit || 'unit'}')">
-                  [+] Create Draft Type
-                </button>
-              ` : ''}
+              <div style="display:flex; align-items:flex-start; gap:8px;">
+                <div style="flex:1">
+                  <select id="rev-eq-${idx}" style="font-size:13px; margin-bottom: 6px; width: 100%" onchange="updateCapacityUnit(${idx}, this.value)">
+                    <option value="">-- Select equipment type --</option>
+                    ${eqOptions}
+                  </select>
+                  ${(isProposed && !l.equipment_type_id) ? `
+                    <button type="button" class="btn btn-ghost" style="font-size:11px; padding: 2px 6px;" onclick="createDraftEquipmentFromPR(${idx}, '${l.proposed_equipment_name}', '${l.proposed_capacity_unit || 'unit'}')">
+                      [+] Create Draft Type
+                    </button>
+                  ` : ''}
+                </div>
+                <button type="button" id="rev-eq-edit-${idx}" class="btn btn-ghost ${factoryEq && factoryEq.status === 'DRAFT' ? '' : 'hidden'}" style="padding: 4px 8px; font-size: 11px; height: 32px;" onclick="editDraftEquipment(${idx})">✎ Edit</button>
+              </div>
+
+              <div id="inline-eq-form-${idx}" class="hidden" style="margin-top: 8px; padding: 8px; background: var(--bg-alt); border-radius: 4px; border: 1px dashed var(--border);">
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px;">Draft Equipment Type Settings</div>
+                <div class="field" style="margin-bottom: 6px;">
+                  <label style="font-size: 10px;">Name</label>
+                  <input type="text" id="inline-eq-name-${idx}" style="font-size: 12px; padding: 4px 8px; min-height: 28px;">
+                </div>
+                <div class="field" style="margin-bottom: 6px;">
+                  <label style="font-size: 10px;">Capacity Unit</label>
+                  <input type="text" id="inline-eq-unit-${idx}" style="font-size: 12px; padding: 4px 8px; min-height: 28px;">
+                </div>
+                <div style="display:flex; gap:8px; margin-top: 8px;">
+                  <button type="button" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 2px 8px; min-height: 24px;" onclick="saveInlineEq(${idx})">Save to Database</button>
+                  <button type="button" class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 2px 8px; min-height: 24px;" onclick="hideInlineEq(${idx})">Cancel</button>
+                </div>
+              </div>
             </div>
             <div class="field" style="margin-top:8px; margin-bottom:10px">
               <label>Verified Capacity</label>
@@ -248,6 +269,88 @@ function updateCapacityUnit(idx, eqId) {
   if (unitSpan) {
     unitSpan.textContent = eq ? eq.capacity_unit : 'unit';
   }
+  const editBtn = document.getElementById(`rev-eq-edit-${idx}`);
+  if (editBtn) {
+    if (eq && eq.status === 'DRAFT') {
+      editBtn.classList.remove('hidden');
+    } else {
+      editBtn.classList.add('hidden');
+    }
+  }
+}
+
+async function editDraftEquipment(idx) {
+  const eqId = document.getElementById(`rev-eq-${idx}`).value;
+  const eq = _reviewEqTypes.find(e => e.id === eqId);
+  if (!eq || eq.status !== 'DRAFT') return;
+
+  document.getElementById(`inline-eq-name-${idx}`).value = eq.name;
+  document.getElementById(`inline-eq-unit-${idx}`).value = eq.capacity_unit;
+  document.getElementById(`inline-eq-form-${idx}`).classList.remove('hidden');
+}
+
+function createDraftEquipmentFromPR(idx, proposedName, capacityUnit) {
+  const slug = "eq_" + proposedName.toLowerCase().replace(/\s+/g, '_');
+  document.getElementById(`inline-eq-name-${idx}`).value = proposedName;
+  document.getElementById(`inline-eq-unit-${idx}`).value = capacityUnit;
+  document.getElementById(`inline-eq-form-${idx}`).dataset.newSlug = slug;
+  document.getElementById(`inline-eq-form-${idx}`).classList.remove('hidden');
+}
+
+function hideInlineEq(idx) {
+  const form = document.getElementById(`inline-eq-form-${idx}`);
+  if (form) {
+    form.classList.add('hidden');
+    delete form.dataset.newSlug;
+  }
+}
+
+async function saveInlineEq(idx) {
+  const form = document.getElementById(`inline-eq-form-${idx}`);
+  const newName = document.getElementById(`inline-eq-name-${idx}`).value.trim();
+  const newUnit = document.getElementById(`inline-eq-unit-${idx}`).value.trim();
+
+  if (!newName || !newUnit) {
+    toast('Name and Capacity Unit are required.', 'error');
+    return;
+  }
+
+  const select = document.getElementById(`rev-eq-${idx}`);
+  const existingEqId = select.value;
+  const newSlug = form.dataset.newSlug;
+
+  try {
+    if (newSlug) {
+      const newEq = await api.createEquipmentType({
+        id: newSlug,
+        name: newName,
+        capacity_unit: newUnit,
+        status: 'DRAFT'
+      });
+      _reviewEqTypes.push(newEq);
+      const option = document.createElement('option');
+      option.value = newEq.id;
+      option.text = `${newEq.name} (DRAFT)`;
+      select.add(option);
+      select.value = newEq.id;
+      updateCapacityUnit(idx, newEq.id);
+      toast('Draft Equipment Type created successfully!', 'success');
+    } else {
+      const updated = await api.updateEquipmentType(existingEqId, { name: newName, capacity_unit: newUnit });
+      const eq = _reviewEqTypes.find(e => e.id === existingEqId);
+      if (eq) {
+        eq.name = updated.name;
+        eq.capacity_unit = updated.capacity_unit;
+      }
+      const option = Array.from(select.options).find(o => o.value === existingEqId);
+      if (option) option.text = `${updated.name} (DRAFT)`;
+      updateCapacityUnit(idx, existingEqId);
+      toast('Draft Equipment Type updated successfully!', 'success');
+    }
+    hideInlineEq(idx);
+  } catch (err) {
+    toast('Failed to save Draft Equipment Type: ' + err.message, 'error');
+  }
 }
 
 async function submitPRReview() {
@@ -296,38 +399,7 @@ async function submitPRReview() {
   }
 }
 
-async function createDraftEquipmentFromPR(idx, proposedName, capacityUnit) {
-  try {
-    const slug = prompt("Confirm Equipment Type ID (slug format):", "eq_" + proposedName.toLowerCase().replace(/\s+/g, '_'));
-    if (!slug) return; // Cancelled
 
-    // Call API to create EquipmentType
-    const newEq = await api.createEquipmentType({
-      id: slug,
-      name: proposedName,
-      capacity_unit: capacityUnit,
-      status: 'DRAFT'
-    });
-
-    // Update local state
-    _reviewEqTypes.push(newEq);
-
-    // Update UI dropdown
-    const select = document.getElementById(`rev-eq-${idx}`);
-    if (select) {
-      const option = document.createElement('option');
-      option.value = newEq.id;
-      option.text = `${newEq.name} (DRAFT)`;
-      select.add(option);
-      select.value = newEq.id;
-      updateCapacityUnit(idx, newEq.id);
-    }
-
-    toast('Draft Equipment Type created successfully!', 'success');
-  } catch (err) {
-    toast('Failed to create Draft Equipment Type: ' + err.message, 'error');
-  }
-}
 
 // ── Reject PR ─────────────────────────────────────────────────────────────────
 

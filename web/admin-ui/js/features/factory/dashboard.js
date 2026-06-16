@@ -21,7 +21,7 @@ async function renderFacDashboard() {
   const BATCHES = [];
 
   return `
-    ${pageHeader('Factory Dashboard', 'Central Kitchen — production, machines, stock')}
+    ${pageHeader('Factory Dashboard', 'Factory — production, machines, stock')}
 
     <div class="grid-4 gap-16">
       ${kpi('🏭', 'In Production', inProgress, 'var(--blue)', 'Active production orders')}
@@ -121,7 +121,30 @@ async function openRecordGRModal(poId) {
         <td>${l.equipment_type_id || l.item_id || 'Unknown'}</td>
         <td><input type="number" id="gr-expected-${idx}" value="${l.qty_ordered * l.conversion}" disabled style="width:70px" /></td>
         <td>
-          <input type="number" id="gr-actual-${idx}" value="${l.qty_ordered * l.conversion}" style="width:70px" />
+          <input type="number" id="gr-usable-${idx}" value="${l.qty_ordered * l.conversion}" style="width:70px" oninput="toggleDiscrepancyPanel(${idx})" />
+        </td>
+      </tr>
+      <tr id="discrepancy-panel-${idx}" class="hidden" style="background:var(--bg-card);border-left:3px solid var(--amber)">
+        <td colspan="3" style="padding:12px;">
+          <div style="font-weight:600;font-size:12px;color:var(--amber);margin-bottom:8px">Discrepancy Details</div>
+          <div class="grid-2 gap-8">
+            <div class="field">
+              <label>Damaged Qty</label>
+              <input type="number" id="gr-damaged-${idx}" value="0" min="0" oninput="updateMissingQty(${idx})" style="width:100%">
+            </div>
+            <div class="field">
+              <label>Missing Qty</label>
+              <input type="number" id="gr-missing-${idx}" value="0" disabled style="width:100%">
+            </div>
+          </div>
+          <div class="field mt-8">
+            <label>Reason for Discrepancy</label>
+            <input type="text" id="gr-reason-${idx}" placeholder="e.g. Box was crushed">
+          </div>
+          <div class="field mt-8">
+            <label>Photo Evidence URL</label>
+            <input type="text" id="gr-evidence-${idx}" placeholder="e.g. https://.../damage.jpg">
+          </div>
         </td>
       </tr>
     `).join('');
@@ -135,14 +158,14 @@ async function openRecordGRModal(poId) {
         <p class="dim">Receiving delivery for PO <code>${poId.split('-')[0]}</code></p>
         
         <div class="field">
-          <label>Received Items (Base Units)</label>
+          <label>Received Items (Usable Base Units)</label>
           <div class="table-wrap">
             <table style="font-size: 13px;">
               <thead>
                 <tr>
                   <th>Item</th>
                   <th>Expected Qty</th>
-                  <th>Actual Received</th>
+                  <th>Usable Received</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,7 +173,16 @@ async function openRecordGRModal(poId) {
               </tbody>
             </table>
           </div>
-          <p class="small faint" style="margin-top:4px">If received quantity is less than expected, a Discrepancy Ticket will be auto-created.</p>
+          <p class="small faint" style="margin-top:4px">If usable quantity is less than expected, a Discrepancy Ticket will be auto-created.</p>
+        </div>
+
+        <div class="field mt-8">
+          <label>Delivery Note Photo URL</label>
+          <input type="text" id="gr-delivery-note" placeholder="Paste link to physical note photo">
+        </div>
+        <div class="field mt-8">
+          <label>General Notes</label>
+          <textarea id="gr-notes" rows="2" placeholder="Any general comments on the delivery..."></textarea>
         </div>
 
         <div class="flex gap-16 mt-8">
@@ -180,9 +212,12 @@ async function submitGR() {
 
   const payloadLines = lines.map((l, idx) => {
     return {
-      item_id: l.item_id || "", // CapEx uses empty string
+      item_id: l.item_id || l.equipment_type_id || "", // Fix for CapEx items
       qty_expected: parseFloat(document.getElementById(`gr-expected-${idx}`).value),
-      qty_received: parseFloat(document.getElementById(`gr-actual-${idx}`).value)
+      qty_received: parseFloat(document.getElementById(`gr-usable-${idx}`).value),
+      qty_damaged: parseFloat(document.getElementById(`gr-damaged-${idx}`)?.value || "0"),
+      reason: document.getElementById(`gr-reason-${idx}`)?.value || "",
+      evidence_url: document.getElementById(`gr-evidence-${idx}`)?.value || ""
     };
   });
 
@@ -190,6 +225,8 @@ async function submitGR() {
     puro_id: po.id,
     receiving_node_id: state.node, // Factory/Store
     staff_id: state.currentUser.staffId,
+    notes: document.getElementById('gr-notes').value || "",
+    delivery_note_url: document.getElementById('gr-delivery-note').value || "",
     lines: payloadLines
   };
 
@@ -209,4 +246,36 @@ async function submitGR() {
   } catch (err) {
     toast('Failed to record GR: ' + err.message, 'error');
   }
+}
+
+function toggleDiscrepancyPanel(idx) {
+  const expected = parseFloat(document.getElementById(`gr-expected-${idx}`).value);
+  const usable = parseFloat(document.getElementById(`gr-usable-${idx}`).value);
+  const panel = document.getElementById(`discrepancy-panel-${idx}`);
+  
+  if (usable < expected) {
+    panel.classList.remove('hidden');
+    updateMissingQty(idx);
+  } else {
+    panel.classList.add('hidden');
+    // Reset values when hidden
+    const damagedEl = document.getElementById(`gr-damaged-${idx}`);
+    if (damagedEl) damagedEl.value = 0;
+    const missingEl = document.getElementById(`gr-missing-${idx}`);
+    if (missingEl) missingEl.value = 0;
+    const reasonEl = document.getElementById(`gr-reason-${idx}`);
+    if (reasonEl) reasonEl.value = "";
+    const evidenceEl = document.getElementById(`gr-evidence-${idx}`);
+    if (evidenceEl) evidenceEl.value = "";
+  }
+}
+
+function updateMissingQty(idx) {
+  const expected = parseFloat(document.getElementById(`gr-expected-${idx}`).value) || 0;
+  const usable = parseFloat(document.getElementById(`gr-usable-${idx}`).value) || 0;
+  const damaged = parseFloat(document.getElementById(`gr-damaged-${idx}`).value) || 0;
+  
+  let missing = expected - usable - damaged;
+  if (missing < 0) missing = 0;
+  document.getElementById(`gr-missing-${idx}`).value = missing;
 }

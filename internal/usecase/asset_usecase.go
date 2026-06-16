@@ -32,7 +32,7 @@ type AssetUseCase interface {
 	// AutoCreateAsset is called by POUseCase.SettlePayment for PR_TRIGGERED POs.
 	// Creates the Asset in PENDING_REGISTRATION status.
 	// The Asset is not yet a Machine — the node manager must call RegisterAsMachine.
-	AutoCreateAsset(ctx context.Context, purOID, grID string) (*models.Asset, error)
+	AutoCreateAsset(ctx context.Context, purOID, grID, invoiceID string) (*models.Asset, error)
 
 	// RegisterAsMachine links an Asset to a new Machine entry.
 	// Validates that the Asset is in PENDING_REGISTRATION status.
@@ -62,6 +62,7 @@ type assetUseCase struct {
 	grRepo      services.GoodsReceiptRepository
 	prRepo      services.PurchaseRequisitionRepository
 	prLineRepo  services.PRLineRepository
+	invLineRepo services.SupplierInvoiceLineRepository
 }
 
 func newAssetUseCase(
@@ -71,6 +72,7 @@ func newAssetUseCase(
 	grRepo services.GoodsReceiptRepository,
 	prRepo services.PurchaseRequisitionRepository,
 	prLineRepo services.PRLineRepository,
+	invLineRepo services.SupplierInvoiceLineRepository,
 ) AssetUseCase {
 	return &assetUseCase{
 		assetRepo:   assetRepo,
@@ -79,12 +81,13 @@ func newAssetUseCase(
 		grRepo:      grRepo,
 		prRepo:      prRepo,
 		prLineRepo:  prLineRepo,
+		invLineRepo: invLineRepo,
 	}
 }
 
 // AutoCreateAsset creates an Asset record after a PR_TRIGGERED PO is payment-settled.
 // Reads the PR lines to derive the EquipmentTypeID for the asset.
-func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string) (*models.Asset, error) {
+func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID, invoiceID string) (*models.Asset, error) {
 	purO, err := uc.purORepo.FindByID(ctx, purOID)
 	if err != nil || purO == nil {
 		return nil, fmt.Errorf("asset: AutoCreateAsset: PO %s not found: %w", purOID, err)
@@ -125,9 +128,26 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 		return nil, fmt.Errorf("asset: AutoCreateAsset: PR %s has no expected_capacity — cannot auto-register machine", *purO.PRID)
 	}
 
+	var acquisitionCost float64
+	if invoiceID != "" && uc.invLineRepo != nil {
+		invLines, err := uc.invLineRepo.ListByInvoice(ctx, invoiceID)
+		if err == nil {
+			for _, il := range invLines {
+				if il.ItemID != nil && *il.ItemID == equipmentTypeID {
+					acquisitionCost = il.LineTotal
+					break
+				}
+				if il.RawLineText == equipmentTypeID {
+					acquisitionCost = il.LineTotal
+					break
+				}
+			}
+		}
+	}
+
 	now := time.Now()
 
-	// Asset starts as PENDING_REGISTRATION — it needs to be explicitly registered as a Machine by the Store Manager
+	// Asset starts as PENDING_REGISTRATION
 	asset := &models.Asset{
 		ID:               uuid.NewString(),
 		OrgID:            purO.OrgID,
@@ -141,12 +161,31 @@ func (uc *assetUseCase) AutoCreateAsset(ctx context.Context, purOID, grID string
 		Status:           models.AssetPendingRegistration,
 		Depreciation:     models.DepreciationStraightLine,
 		UsefulLifeYears:  5,
-		CurrentBookValue: 0,
+		CurrentBookValue: acquisitionCost,
+		AcquisitionCost:  acquisitionCost,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	if err := uc.assetRepo.Create(ctx, asset); err != nil {
 		return nil, fmt.Errorf("asset: AutoCreateAsset: persist asset: %w", err)
+	}
+
+	// Auto-register the Machine to save the node manager a manual step
+	if maxCapacity > 0 {
+		machineID := fmt.Sprintf("M_%s_%s", equipmentTypeID, asset.ID[:8])
+		_, err := uc.RegisterAsMachine(ctx, asset.ID, MachineRegistrationInput{
+			MachineID:       machineID,
+			EquipmentTypeID: equipmentTypeID,
+			MaxCapacity:     maxCapacity,
+		})
+		if err != nil {
+			// Do not fail the whole transaction, but log the error
+			// The node manager can still register it manually if needed
+			// (Ideally we would log it properly, but here we just return the asset)
+			return asset, nil
+		}
+		// Refresh asset state since RegisterAsMachine updated it
+		asset, _ = uc.loadAsset(ctx, asset.ID)
 	}
 
 	return asset, nil

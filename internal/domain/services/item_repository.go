@@ -16,15 +16,3 @@ type ItemRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// ItemCapacityConfigRepository defines persistence for the bin-packing input table.
-// For each (Item × EquipmentType) pair, it records slot consumption and mix rules.
-type ItemCapacityConfigRepository interface {
-	Save(ctx context.Context, cfg *models.ItemCapacityConfig) error
-	// Get returns the capacity config for an (item, equipmentType) pair.
-	// Returns nil, nil when no config exists.
-	Get(ctx context.Context, itemID, equipmentTypeID string) (*models.ItemCapacityConfig, error)
-	// ListByEquipmentType returns all items configured for a given equipment type.
-	// Used by the allocation engine to check slot consumption for queued batches.
-	ListByEquipmentType(ctx context.Context, equipmentTypeID string) ([]*models.ItemCapacityConfig, error)
-	Delete(ctx context.Context, itemID, equipmentTypeID string) error
-}

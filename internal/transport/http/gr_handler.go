@@ -22,6 +22,8 @@ func (h *GRHandler) ConfirmPurO(c *gin.Context) {
 		PurOID          string                  `json:"puro_id"`
 		ReceivingNodeID string                  `json:"receiving_node_id"`
 		StaffID         string                  `json:"staff_id"`
+		Notes           string                  `json:"notes"`
+		DeliveryNoteURL string                  `json:"delivery_note_url"`
 		Lines           []usecase.GRLineInput   `json:"lines"`
 	}
 
@@ -30,7 +32,7 @@ func (h *GRHandler) ConfirmPurO(c *gin.Context) {
 		return
 	}
 
-	gr, err := h.grService.ConfirmPurOGoodsReceipt(c.Request.Context(), req.PurOID, req.ReceivingNodeID, req.StaffID, req.Lines)
+	gr, err := h.grService.ConfirmPurOGoodsReceipt(c.Request.Context(), req.PurOID, req.ReceivingNodeID, req.StaffID, req.Notes, req.DeliveryNoteURL, req.Lines)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -51,4 +53,21 @@ func (h *GRHandler) GetByID(c *gin.Context) {
 		"gr":    gr,
 		"lines": lines,
 	})
+}
+
+// List fetching GoodsReceipts optionally filtered by puro_id
+func (h *GRHandler) List(c *gin.Context) {
+	purOID := c.Query("puro_id")
+	if purOID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "puro_id query param is required"})
+		return
+	}
+
+	grs, err := h.grService.GetGRsByPurOID(c.Request.Context(), purOID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, grs)
 }

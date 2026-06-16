@@ -39,31 +39,3 @@ type UoM struct {
 	PkgUnit    string  `json:"pkg_unit"`   // e.g., "bag", "case", "bottle"
 	Conversion float64 `json:"conversion"` // How many base units are in one pkg_unit
 }
-
-// ─── Item Capacity Config ─────────────────────────────────────────────────────
-
-// ItemCapacityConfig is the critical linking table between an Item and a StationType.
-// For each (Item × StationType) combination, it defines:
-//   - how much machine capacity one base unit of that item consumes, and
-//   - whether that item tolerates sharing a machine with other item types in the same cycle.
-//
-// This is the primary input to the bin-packing algorithm in the batch allocation engine.
-//
-// Examples:
-//
-//	Burger bun  × OVEN  → slot_consumption=1,   allow_mix=true   (can share oven with other buns)
-//	Egg         × FRYER → slot_consumption=1L,  allow_mix=false  (needs exclusive fryer cycle)
-//	Potato      × FRYER → slot_consumption=2L,  allow_mix=false  (needs exclusive fryer cycle)
-type ItemCapacityConfig struct {
-	ItemID string `json:"item_id"` // FK → Item
-	// EquipmentTypeID is the FK to the EquipmentType (e.g., "FRYER", "OVEN").
-	// Previously named StationTypeID — renamed to match the canonical EquipmentType model.
-	EquipmentTypeID string `json:"equipment_type_id"` // FK → EquipmentType
-	// SlotConsumption is the capacity units consumed per one base unit of the item.
-	// The unit corresponds to EquipmentType.capacity_unit (e.g., slots, liters, trays).
-	SlotConsumption float64 `json:"slot_consumption"`
-	// AllowMix controls whether this item may share a machine batch with other item types.
-	// If false, the item requires exclusive machine use for its entire cook cycle.
-	// Enforced at batch creation time by the bin-packing engine.
-	AllowMix bool `json:"allow_mix"`
-}

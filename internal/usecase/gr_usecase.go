@@ -22,9 +22,10 @@ import (
 //   - GR status is set to DISCREPANCY if any shortage, else CONFIRMED.
 type GRUseCase interface {
 	// ConfirmPurOGoodsReceipt records receipt of goods from a supplier-delivered PurchaseOrder.
-	ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receivingNodeID, staffID string, lines []GRLineInput) (*models.GoodsReceipt, error)
+	ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receivingNodeID, staffID string, notes string, deliveryNoteURL string, lines []GRLineInput) (*models.GoodsReceipt, error)
 
 	GetGR(ctx context.Context, grID string) (*models.GoodsReceipt, []*models.GoodsReceiptLine, error)
+	GetGRsByPurOID(ctx context.Context, purOID string) ([]*models.GoodsReceipt, error)
 }
 
 // grUseCase implements GRUseCase for PurchaseOrder-linked receipts.
@@ -55,7 +56,7 @@ func newGRUseCase(
 // ConfirmPurOGoodsReceipt records receipt of goods delivered by a supplier.
 // Called after the node receives goods from the supplier (linked to a ON_WAY_DELIVERY PurchaseOrder).
 // Transitions the PO from ON_WAY_DELIVERY → remains ON_WAY_DELIVERY here; SettlePayment moves it to COMPLETED.
-func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receivingNodeID, staffID string, lines []GRLineInput) (*models.GoodsReceipt, error) {
+func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receivingNodeID, staffID string, notes string, deliveryNoteURL string, lines []GRLineInput) (*models.GoodsReceipt, error) {
 	purO, err := uc.purORepo.FindByID(ctx, purOID)
 	if err != nil || purO == nil {
 		return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: PO %s not found: %w", purOID, err)
@@ -99,6 +100,8 @@ func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receiv
 		RefID:           purOID,
 		ReceivingNodeID: receivingNodeID,
 		Status:          grStatus,
+		Notes:           notes,
+		DeliveryNoteURL: deliveryNoteURL,
 		ReceivedBy:      staffID,
 		ReceivedAt:      &now,
 		CreatedAt:       now,
@@ -130,15 +133,21 @@ func (uc *grUseCase) ConfirmPurOGoodsReceipt(ctx context.Context, purOID, receiv
 
 		// Auto-create DiscrepancyTicket for any shortfall.
 		if l.QtyReceived < l.QtyExpected {
+			qtyMissing := l.QtyExpected - l.QtyReceived - l.QtyDamaged
+			if qtyMissing < 0 {
+				qtyMissing = 0
+			}
 			dt := &models.DiscrepancyTicket{
-				ID:         uuid.NewString(),
-				GRID:       gr.ID,
-				ItemID:     l.ItemID,
-				QtyMissing: l.QtyExpected - l.QtyReceived,
-				QtyDamaged: 0,
-				Status:     models.DiscrepancyOpen,
-				CreatedAt:  now,
-				UpdatedAt:  now,
+				ID:             uuid.NewString(),
+				GRID:           gr.ID,
+				ItemID:         l.ItemID,
+				QtyMissing:     qtyMissing,
+				QtyDamaged:     l.QtyDamaged,
+				Status:         models.DiscrepancyOpen,
+				ReportedReason: l.Reason,
+				EvidenceURL:    l.EvidenceURL,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			}
 			if err := uc.dtRepo.Create(ctx, dt); err != nil {
 				return nil, fmt.Errorf("gr: ConfirmPurOGoodsReceipt: create DiscrepancyTicket item %s: %w", l.ItemID, err)
@@ -163,4 +172,8 @@ func (uc *grUseCase) GetGR(ctx context.Context, grID string) (*models.GoodsRecei
 	}
 	lines, err := uc.grLine.ListByGR(ctx, grID)
 	return gr, lines, err
+}
+
+func (uc *grUseCase) GetGRsByPurOID(ctx context.Context, purOID string) ([]*models.GoodsReceipt, error) {
+	return uc.grRepo.FindByRef(ctx, models.GoodsReceiptRefPurO, purOID)
 }

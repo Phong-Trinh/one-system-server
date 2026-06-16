@@ -33,7 +33,6 @@ type allocationUseCase struct {
 	batchRepo   services.ProductionBatchRepository
 	machineRepo services.MachineRepository
 	sopRepo     services.SOPRepository
-	capRepo     services.ItemCapacityConfigRepository // bin-packing config: slot consumption + allow_mix
 	facade      *SupplyChainFacade
 }
 
@@ -42,14 +41,12 @@ func NewAllocationUseCase(
 	batchRepo services.ProductionBatchRepository,
 	machineRepo services.MachineRepository,
 	sopRepo services.SOPRepository,
-	capRepo services.ItemCapacityConfigRepository,
 ) AllocationUseCase {
 	return &allocationUseCase{
 		poRepo:      poRepo,
 		batchRepo:   batchRepo,
 		machineRepo: machineRepo,
 		sopRepo:     sopRepo,
-		capRepo:     capRepo,
 	}
 }
 
@@ -59,14 +56,7 @@ func (uc *allocationUseCase) SetFacade(facade *SupplyChainFacade) {
 
 // ── Private Helpers ───────────────────────────────────────────────────────────
 
-// getCapConfig returns the ItemCapacityConfig for (itemID, equipmentTypeID).
-// Returns nil when no config is found (non-machine step).
-func (uc *allocationUseCase) getCapConfig(ctx context.Context, itemID, equipmentTypeID string) (*models.ItemCapacityConfig, error) {
-	if itemID == "" || equipmentTypeID == "" {
-		return nil, nil
-	}
-	return uc.capRepo.Get(ctx, itemID, equipmentTypeID)
-}
+
 
 // createBatchForStep creates a QUEUED ProductionBatch for the given SOP step.
 // Slot consumption is derived from ItemCapacityConfig for the step's equipment type.
@@ -79,13 +69,7 @@ func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.
 
 	slotsUsed := 0.0
 	if step.EquipmentTypeID != nil {
-		cfg, err := uc.getCapConfig(ctx, po.ItemID, *step.EquipmentTypeID)
-		if err != nil {
-			return fmt.Errorf("load cap config for item=%s equip=%s: %w", po.ItemID, *step.EquipmentTypeID, err)
-		}
-		if cfg != nil {
-			slotsUsed = po.TargetQty * cfg.SlotConsumption
-		}
+		slotsUsed = po.TargetQty * step.SlotConsumption
 	}
 
 	batch := &models.ProductionBatch{
@@ -178,11 +162,8 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 		activeMixDescriptions := make(map[string]bool)
 		for _, ab := range activeBatches {
 			abStep, _ := uc.sopRepo.FindStepByID(ctx, ab.SOPStepID)
-			if abStep != nil && abStep.EquipmentTypeID != nil {
-				abCfg, _ := uc.getCapConfig(ctx, ab.ItemID, *abStep.EquipmentTypeID)
-				if abCfg != nil && abCfg.AllowMix {
-					activeMixDescriptions[abStep.Description] = true
-				}
+			if abStep != nil && abStep.EquipmentTypeID != nil && abStep.AllowMix {
+				activeMixDescriptions[abStep.Description] = true
 			}
 		}
 
@@ -206,11 +187,9 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 					continue
 				}
 
-				// Load capacity config for this (item, equipment type) pair.
-				cfg, _ := uc.getCapConfig(ctx, b.ItemID, *step.EquipmentTypeID)
 
 				// Priority pass: only accept steps matching currently active mix descriptions.
-				if cfg != nil && cfg.AllowMix && len(activeMixDescriptions) > 0 {
+				if step.AllowMix && len(activeMixDescriptions) > 0 {
 					isMatchingActive := activeMixDescriptions[step.Description]
 					if pass == 1 && !isMatchingActive {
 						continue
@@ -231,10 +210,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 				needsSplit := false
 				fitQty := b.Qty
 				fitSlots := b.SlotsUsed
-				slotPerUnit := 0.0
-				if cfg != nil {
-					slotPerUnit = cfg.SlotConsumption
-				}
+				slotPerUnit := step.SlotConsumption
 
 				if currentLoad+b.SlotsUsed > m.MaxCapacity {
 					if slotPerUnit > 0 {
@@ -256,18 +232,11 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 					canAllocate = true
 				} else if b.ItemID == referenceItemID {
 					canAllocate = true
-				} else if cfg != nil && cfg.AllowMix {
-					// Check if the reference item's config also allows mixing.
-					var refEquipTypeID string
+				} else if step.AllowMix {
+					// Check if the reference item's step also allows mixing.
 					if len(activeBatches) > 0 {
 						refStep, _ := uc.sopRepo.FindStepByID(ctx, activeBatches[0].SOPStepID)
-						if refStep != nil && refStep.EquipmentTypeID != nil {
-							refEquipTypeID = *refStep.EquipmentTypeID
-						}
-					}
-					if refEquipTypeID != "" {
-						refCfg, _ := uc.getCapConfig(ctx, referenceItemID, refEquipTypeID)
-						if refCfg != nil && refCfg.AllowMix {
+						if refStep != nil && refStep.AllowMix {
 							canAllocate = true
 						}
 					}
@@ -302,7 +271,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 						if referenceItemID == "" {
 							referenceItemID = b.ItemID
 						}
-						if cfg != nil && cfg.AllowMix {
+						if step.AllowMix {
 							activeMixDescriptions[step.Description] = true
 						}
 						queued[i] = nil
