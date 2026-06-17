@@ -63,11 +63,29 @@ async function renderHQBOM() {
 /* ── Create BOM ──────────────────────────────────────────────────────────── */
 
 async function openCreateBOMModal() {
-  let items = [];
-  try { items = await api.getItems(state.orgId) || []; } catch (e) { }
+  let items = [], boms = [];
+  try {
+    [items, boms] = await Promise.all([
+      api.getItems(state.orgId).catch(() => []),
+      api.getBOMs().catch(() => [])
+    ]);
+    items = items || [];
+    boms = boms || [];
+  } catch (e) { }
 
-  const outputOptions = items
-    .filter(it => it.type === 'PRODUCT' || it.type === 'SEMI_PRODUCT')
+  // Items that already have a BOM are ineligible as output
+  const bookedOutputIds = new Set(boms.map(b => b.output_item_id));
+
+  const outputItems = items.filter(it =>
+    (it.type === 'PRODUCT' || it.type === 'SEMI_PRODUCT') && !bookedOutputIds.has(it.id)
+  );
+
+  if (outputItems.length === 0) {
+    toast('All PRODUCT/SEMI_PRODUCT items already have a BOM. Create a new item first.', 'warning');
+    return;
+  }
+
+  const outputOptions = outputItems
     .map(it => `<option value="${it.id}">${it.name} (${it.type})</option>`)
     .join('');
 
@@ -80,16 +98,52 @@ async function openCreateBOMModal() {
       <div class="field">
         <label>Output Item (what this BOM produces) *</label>
         <select id="bom-output">${outputOptions}</select>
+        <small class="dim">Only items without an existing BOM are shown.</small>
       </div>
       <div style="font-weight:600;margin-top:8px">Ingredients (BOM Lines)</div>
       <div id="bom-lines" class="flex col gap-8">
         <div class="bom-line flex row gap-8 align-center">
-          <select class="bom-line-item" style="flex:2">${allItemOptions}</select>
+          <select class="bom-line-item" style="flex:2" onchange="updateBOMLineUnit(this)">${allItemOptions}</select>
           <input class="bom-line-qty" type="number" step="0.01" min="0.01" value="1" placeholder="Qty" style="flex:1;min-width:80px" />
+          <span class="bom-line-unit dim small" style="min-width:40px;white-space:nowrap"></span>
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="this.closest('.bom-line').remove()">✕</button>
         </div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="addBOMLine(\`${allItemOptions.replace(/`/g, '\\`')}\`)">+ Add Ingredient</button>
+      <div class="flex row gap-8">
+        <button class="btn btn-outline btn-sm" onclick="addBOMLine()">+ Add Ingredient</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleQuickAddItem()" style="font-size:12px">⚡ Quick add new item</button>
+      </div>
+
+      <!-- Quick Add New Item Panel -->
+      <div id="quick-add-item-panel" style="display:none;border:1px dashed var(--border);border-radius:8px;padding:16px;background:var(--bg-hover)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:12px">⚡ Quick Add New Item</div>
+        <div class="grid-2 gap-12">
+          <div class="field">
+            <label>Name *</label>
+            <input id="qa-item-name" placeholder="e.g. Burger Bun" />
+          </div>
+          <div class="field">
+            <label>SKU</label>
+            <input id="qa-item-sku" placeholder="e.g. BUN-001" />
+          </div>
+          <div class="field">
+            <label>Type *</label>
+            <select id="qa-item-type">
+              <option value="RAW_MATERIAL">Raw Material</option>
+              <option value="SEMI_PRODUCT">Semi Product</option>
+              <option value="PRODUCT">Product</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Base Unit *</label>
+            <input id="qa-item-unit" placeholder="e.g. gram, piece, ml" value="gram" />
+          </div>
+        </div>
+        <div class="flex row gap-8" style="margin-top:12px">
+          <button class="btn btn-primary btn-sm" onclick="quickCreateAndAddItem()">Create &amp; Add as Ingredient</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleQuickAddItem()">Cancel</button>
+        </div>
+      </div>
     </div>
   `, [
     {
@@ -97,11 +151,14 @@ async function openCreateBOMModal() {
         const outputItemId = document.getElementById('bom-output').value;
         const lineEls = document.querySelectorAll('#modal-body .bom-line');
         const lines = [];
+        let selfRef = false;
         lineEls.forEach(el => {
           const itemId = el.querySelector('.bom-line-item').value;
           const qty = parseFloat(el.querySelector('.bom-line-qty').value);
-          if (itemId && qty > 0) lines.push({ input_item_id: itemId, qty_required: qty });
+          if (itemId === outputItemId) { selfRef = true; return; }
+          if (itemId && qty > 0) lines.push({ item_id: itemId, qty });
         });
+        if (selfRef) { toast('An ingredient cannot be the same as the output item', 'error'); return; }
         if (lines.length === 0) { toast('Add at least one ingredient', 'error'); return; }
         try {
           await api.createBOM({ output_item_id: outputItemId, lines });
@@ -113,18 +170,78 @@ async function openCreateBOMModal() {
     },
     { label: 'Cancel', action: closeModal }
   ]);
+
+  // Initialise unit badges for the first pre-rendered line
+  document.querySelectorAll('#modal-body .bom-line-item').forEach(sel => updateBOMLineUnit(sel));
 }
 
-function addBOMLine(allItemOptions) {
+function toggleQuickAddItem() {
+  const panel = document.getElementById('quick-add-item-panel');
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function quickCreateAndAddItem() {
+  const name = (document.getElementById('qa-item-name')?.value || '').trim();
+  const sku = (document.getElementById('qa-item-sku')?.value || '').trim();
+  const type = document.getElementById('qa-item-type')?.value || 'RAW_MATERIAL';
+  const unit = (document.getElementById('qa-item-unit')?.value || 'gram').trim();
+  if (!name) { toast('Item name is required', 'error'); return; }
+  try {
+    const newItem = await api.createItem({ org_id: state.orgId || 'SNAPBITE_ORG', name, sku, type, base_unit: unit });
+    toast(`Item "${name}" created`, 'success');
+
+    // Append the new option to every existing ingredient dropdown so they stay in sync
+    const newOpt = `<option value="${newItem.id}" data-unit="${unit}">${name} (${type}) [${unit}]</option>`;
+    document.querySelectorAll('#modal-body .bom-line-item').forEach(sel => {
+      sel.insertAdjacentHTML('beforeend', newOpt);
+    });
+
+    // Add a new BOM line pre-selected to the new item
+    const container = document.getElementById('bom-lines');
+    const div = document.createElement('div');
+    div.className = 'bom-line flex row gap-8 align-center';
+    div.innerHTML = `
+      <select class="bom-line-item" style="flex:2" onchange="updateBOMLineUnit(this)">
+        <option value="${newItem.id}" data-unit="${unit}" selected>${name} (${type}) [${unit}]</option>
+      </select>
+      <input class="bom-line-qty" type="number" step="0.01" min="0.01" value="1" placeholder="Qty" style="flex:1;min-width:80px" />
+      <span class="bom-line-unit dim small" style="min-width:40px;white-space:nowrap">${unit}</span>
+      <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="this.closest('.bom-line').remove()">✕</button>
+    `;
+    container.appendChild(div);
+
+    // Reset and hide the quick-add panel
+    document.getElementById('qa-item-name').value = '';
+    document.getElementById('qa-item-sku').value = '';
+    document.getElementById('qa-item-unit').value = 'gram';
+    toggleQuickAddItem();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function updateBOMLineUnit(selectEl) {
+  const selected = selectEl.options[selectEl.selectedIndex];
+  const unit = selected ? (selected.dataset.unit || '') : '';
+  const badge = selectEl.closest('.bom-line').querySelector('.bom-line-unit');
+  if (badge) badge.textContent = unit;
+}
+
+function addBOMLine() {
+  // Clone options from an existing ingredient select — always reflects the latest items
+  const existingSelect = document.querySelector('#modal-body .bom-line-item');
+  const allItemOptions = existingSelect ? existingSelect.innerHTML : '';
+
   const container = document.getElementById('bom-lines');
   const div = document.createElement('div');
   div.className = 'bom-line flex row gap-8 align-center';
   div.innerHTML = `
-    <select class="bom-line-item" style="flex:2">${allItemOptions}</select>
+    <select class="bom-line-item" style="flex:2" onchange="updateBOMLineUnit(this)">${allItemOptions}</select>
     <input class="bom-line-qty" type="number" step="0.01" min="0.01" value="1" placeholder="Qty" style="flex:1;min-width:80px" />
+    <span class="bom-line-unit dim small" style="min-width:40px;white-space:nowrap"></span>
     <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="this.closest('.bom-line').remove()">✕</button>
   `;
   container.appendChild(div);
+  // Initialise unit badge for the newly added line
+  updateBOMLineUnit(div.querySelector('.bom-line-item'));
 }
 
 /* ── BOM Detail ──────────────────────────────────────────────────────────── */
@@ -264,14 +381,14 @@ async function openCreateSOPStepsModal(bomId, productName) {
   } else {
     addSOPStep();
   }
-  
+
   // Initialize dependency lists
   setTimeout(updateDependsOnLists, 0);
 }
 
 function updateDependsOnLists() {
   const stepEls = Array.from(document.querySelectorAll('#modal-body .sop-step'));
-  
+
   stepEls.forEach((el, i) => {
     if (!el.dataset.id) {
       el.dataset.id = 'temp_' + Math.random().toString(36).substr(2, 9);
@@ -281,25 +398,25 @@ function updateDependsOnLists() {
   stepEls.forEach((el, i) => {
     const container = el.querySelector('.sop-depends-container');
     if (!container) return;
-    
+
     let checked = [];
     const chks = container.querySelectorAll('.sop-depends-on-chk');
     if (chks.length > 0) {
       checked = Array.from(container.querySelectorAll('.sop-depends-on-chk:checked')).map(c => c.value);
     } else {
-      try { checked = JSON.parse(container.dataset.depends || '[]'); } catch(e) {}
+      try { checked = JSON.parse(container.dataset.depends || '[]'); } catch (e) { }
     }
-    
+
     let html = '';
     let hasDepends = false;
-    
+
     for (let j = 0; j < i; j++) {
       hasDepends = true;
       const prevEl = stepEls[j];
       const prevId = prevEl.dataset.id;
       const prevDesc = prevEl.querySelector('.sop-desc').value || `Step ${j + 1}`;
       const isChecked = checked.includes(prevId) ? 'checked' : '';
-      
+
       html += `
         <label class="flex row gap-8 align-center" style="cursor:pointer; padding: 4px 8px; border-radius: 4px; background: var(--bg-hover);">
           <input type="checkbox" class="sop-depends-on-chk" value="${prevId}" ${isChecked} style="margin:0" />
@@ -307,11 +424,11 @@ function updateDependsOnLists() {
         </label>
       `;
     }
-    
+
     if (!hasDepends) {
       html = '<div class="dim small" style="padding-top:8px">No previous steps available to depend on.</div>';
     }
-    
+
     container.innerHTML = html;
   });
 }
@@ -324,9 +441,15 @@ function createStepElement(step = {}, index = 0) {
 
   const stepIdDisplay = step.id ? `<div class="small dim mb-8">Step ID: ${step.id}</div>` : '';
 
-  const equipOptions = '<option value="">None (Manual)</option>' + currentEquipTypes.map(et =>
-    `<option value="${et.id}" ${step.equipment_type_id === et.id ? 'selected' : ''}>${et.name} (${et.id})</option>`
+  const equipOptions = '<option value="" data-capacity-unit="">None (Manual)</option>' + currentEquipTypes.map(et =>
+    `<option value="${et.id}" data-capacity-unit="${et.capacity_unit || ''}" ${step.equipment_type_id === et.id ? 'selected' : ''}>${et.name} (${et.capacity_unit || 'unit'})</option>`
   ).join('');
+
+  // Determine initial capacity unit label from the step's selected equipment type
+  const selectedEqType = step.equipment_type_id
+    ? currentEquipTypes.find(et => et.id === step.equipment_type_id)
+    : null;
+  const initialCapacityUnit = selectedEqType ? selectedEqType.capacity_unit : '';
 
   div.innerHTML = `
     <button class="btn btn-ghost btn-sm" style="position:absolute;top:8px;right:8px;color:var(--red)" onclick="this.closest('.sop-step').remove(); updateDependsOnLists();">✕</button>
@@ -339,7 +462,7 @@ function createStepElement(step = {}, index = 0) {
     <div class="grid-2 gap-16">
       <div class="field">
         <label>Equipment Type</label>
-        <select class="sop-station">${equipOptions}</select>
+        <select class="sop-station" onchange="updateSOPStepSlotUnit(this)">${equipOptions}</select>
       </div>
       <div class="field">
         <label>Depends On (Prerequisites)</label>
@@ -351,8 +474,11 @@ function createStepElement(step = {}, index = 0) {
     <div class="grid-2 gap-16" style="padding-top:12px; border-top:1px dashed var(--border)">
       <div class="field">
         <label>Slot Consumption</label>
-        <input class="sop-slots" type="number" step="0.1" value="${step.slot_consumption !== undefined ? step.slot_consumption : 1}" />
-        <small class="dim">Capacity units consumed per unit</small>
+        <div class="flex row gap-8 align-center">
+          <input class="sop-slots" type="number" step="0.1" value="${step.slot_consumption !== undefined ? step.slot_consumption : 1}" style="flex:1" />
+          <span class="sop-slot-cap-unit dim small" style="white-space:nowrap;min-width:32px">${initialCapacityUnit}</span>
+        </div>
+        <small class="dim sop-slot-unit-hint">${initialCapacityUnit ? `Capacity consumed per unit of output [${initialCapacityUnit}]` : 'Select an equipment type to see capacity unit'}</small>
       </div>
       <div class="field" style="display:flex;align-items:center;padding-top:24px;">
         <label class="flex row gap-8" style="cursor:pointer; font-weight:normal; user-select:none;">
@@ -363,6 +489,25 @@ function createStepElement(step = {}, index = 0) {
     </div>
   `;
   return div;
+}
+
+/**
+ * updateSOPStepSlotUnit — called when Equipment Type select changes in a SOP step.
+ * Reads data-capacity-unit from the selected option and updates the slot consumption
+ * unit badge and hint text within the same step card.
+ */
+function updateSOPStepSlotUnit(selectEl) {
+  const selected = selectEl.options[selectEl.selectedIndex];
+  const unit = selected ? (selected.dataset.capacityUnit || '') : '';
+  const step = selectEl.closest('.sop-step');
+  if (!step) return;
+
+  const capUnitBadge = step.querySelector('.sop-slot-cap-unit');
+  const hint = step.querySelector('.sop-slot-unit-hint');
+  if (capUnitBadge) capUnitBadge.textContent = unit;
+  if (hint) hint.textContent = unit
+    ? `Capacity consumed per unit of output [${unit}]`
+    : 'Select an equipment type to see capacity unit';
 }
 
 function addSOPStep() {
