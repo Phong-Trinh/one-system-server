@@ -22,7 +22,7 @@ type InventoryService interface {
 
 	// InitStock creates or overwrites a NodeStock record with a manual quantity.
 	// Used during onboarding or periodic stock-take corrections.
-	InitStock(ctx context.Context, nodeID, itemID string, qtyBU float64) error
+	InitStock(ctx context.Context, nodeID, itemID string, qtyBU float64) (*ROPCheckResult, error)
 
 	// StockIn increases qty_on_hand by qtyBU. Called when a GoodsReceipt is confirmed.
 	// Does NOT trigger a ROP check (stock is rising, not falling).

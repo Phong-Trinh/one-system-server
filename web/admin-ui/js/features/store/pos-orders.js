@@ -37,7 +37,11 @@ async function renderStoPOS() {
       <td><span class="dim small">${new Date(o.created_at).toLocaleString()}</span></td>
       <td>
         ${o.status === 'PENDING' ? `
-          <button class="btn btn-primary btn-sm" onclick="completeOrder('${o.id}')">Complete (Deduct Stock)</button>
+          ${o.production_status === 'COOKING' ? `
+            <button class="btn btn-primary btn-sm" disabled style="opacity:0.6;cursor:not-allowed">Cooking...</button>
+          ` : `
+            <button class="btn btn-primary btn-sm" onclick="completeOrder('${o.id}')">Complete (Deduct Stock)</button>
+          `}
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="cancelOrder('${o.id}')">Cancel</button>
         ` : ''}
       </td>

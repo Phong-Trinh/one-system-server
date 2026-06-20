@@ -21,6 +21,7 @@ type batchDoc struct {
 	SOPStepID           string             `bson:"sop_step_id"`
 	NodeID              string             `bson:"node_id"`
 	MachineID           string             `bson:"machine_id"`
+	ReferenceOrderID    string             `bson:"reference_order_id,omitempty"`
 	ItemID              string             `bson:"item_id"`
 	Qty                 float64            `bson:"qty"`
 	SlotsUsed           float64            `bson:"slots_used"`
@@ -38,6 +39,7 @@ func batchToDoc(b *models.ProductionBatch) *batchDoc {
 		SOPStepID:           b.SOPStepID,
 		NodeID:              b.NodeID,
 		MachineID:           b.MachineID,
+		ReferenceOrderID:    b.ReferenceOrderID,
 		ItemID:              b.ItemID,
 		Qty:                 b.Qty,
 		SlotsUsed:           b.SlotsUsed,
@@ -56,6 +58,7 @@ func docToBatch(d *batchDoc) *models.ProductionBatch {
 		SOPStepID:           d.SOPStepID,
 		NodeID:              d.NodeID,
 		MachineID:           d.MachineID,
+		ReferenceOrderID:    d.ReferenceOrderID,
 		ItemID:              d.ItemID,
 		Qty:                 d.Qty,
 		SlotsUsed:           d.SlotsUsed,

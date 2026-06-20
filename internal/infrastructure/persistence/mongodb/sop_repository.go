@@ -31,15 +31,17 @@ type sopStepDoc struct {
 	SOPID                string   `bson:"sop_id"`
 	SeqNo                int      `bson:"seq_no"`
 	DependsOn            []string `bson:"depends_on"`
-	// EquipmentTypeID links this step to an EquipmentType (e.g., "FRYER").
-	// Nil for manual/non-machine steps. SlotConsumption and AllowMix are
-	// now per (Item × EquipmentType) in ItemCapacityConfig, not on the step.
+	// EquipmentTypeID links this step to an EquipmentType (e.g., "ST_MAY_CHIEN").
+	// Nil for manual/non-machine steps.
 	EquipmentTypeID      *string  `bson:"equipment_type_id,omitempty"`
 	IngredientBOMLineIDs []string `bson:"ingredient_bom_line_ids"`
 	Duration             int      `bson:"duration"`
 	Description          string   `bson:"description"`
-	SlotConsumption      float64  `bson:"slot_consumption"`
-	AllowMix             bool     `bson:"allow_mix"`
+	// SlotConsumption and AllowMix are the bin-packing inputs for this step.
+	// They are defined at SOP authoring time and stored directly on the step,
+	// not in a separate ItemCapacityConfig collection.
+	SlotConsumption      float64  `bson:"slot_consumption"` // capacity units consumed per 1 batch unit
+	AllowMix             bool     `bson:"allow_mix"`        // false = this step requires exclusive machine use
 }
 
 func sopToDoc(s *models.SOP) *sopDoc {
@@ -205,6 +207,14 @@ func (r *sopRepository) DeleteStep(ctx context.Context, sopID string, stepID str
 	_, err := r.steps.DeleteOne(ctx, bson.M{"sop_id": sopID, "_id": stepID})
 	if err != nil {
 		return fmt.Errorf("sopRepository.DeleteStep: %w", err)
+	}
+	return nil
+}
+
+func (r *sopRepository) DeleteStepsBySOPID(ctx context.Context, sopID string) error {
+	_, err := r.steps.DeleteMany(ctx, bson.M{"sop_id": sopID})
+	if err != nil {
+		return fmt.Errorf("sopRepository.DeleteStepsBySOPID: %w", err)
 	}
 	return nil
 }

@@ -57,7 +57,7 @@ async function renderFacITO() {
         <td><span class="dim small">${new Date(ito.created_at).toLocaleString()}</span></td>
         <td>
           <button class="btn btn-ghost btn-sm" onclick="openFacITODetail('${ito.id}')">View</button>
-          ${(isOutbound && ito.status === 'DRAFT') ? `
+          ${(isOutbound && ito.status === 'PENDING_APPROVAL') ? `
             <button class="btn btn-primary btn-sm" onclick="approveITO('${ito.id}')">Approve</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="rejectITO('${ito.id}')">Reject</button>
           ` : ''}
@@ -177,6 +177,10 @@ async function openGoodsIssueModal(itoId) {
         <div class="field" style="flex:1"><label>Driver Name</label><input id="gi-driver" placeholder="e.g. John Doe" /></div>
         <div class="field" style="flex:1"><label>Vehicle Plate</label><input id="gi-plate" placeholder="e.g. 29A-12345" /></div>
       </div>
+      <div class="field mt-8">
+        <label>Delivery Note / Evidence URL (Required)</label>
+        <input id="gi-media" placeholder="https://example.com/delivery-note.pdf" />
+      </div>
       <div style="font-weight:600;margin-top:8px">Quantities to Dispatch</div>
       ${lineInputs}
     </div>
@@ -194,6 +198,7 @@ async function openGoodsIssueModal(itoId) {
         await api.itoGoodsIssue(itoId, {
           driver_name: document.getElementById('gi-driver').value,
           vehicle_plate: document.getElementById('gi-plate').value,
+          media_url: document.getElementById('gi-media').value,
           lines: linesData
         });
         toast('Goods dispatched successfully! Factory stock deducted.', 'success');

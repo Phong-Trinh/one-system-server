@@ -51,28 +51,28 @@ type InvUseCase = services.InventoryService
 // SupplyChainRepos bundles all repository dependencies for the facade constructor.
 // Keeping them in a struct avoids a 20-argument constructor signature.
 type SupplyChainRepos struct {
-	Stock        services.NodeStockRepository
-	Config       services.NodeItemConfigRepository
-	Supplier     services.SupplierRepository
-	ITO          services.InternalTransferOrderRepository
-	ITOLine      services.ITOLineRepository
-	PR           services.PurchaseRequisitionRepository
-	PRLine       services.PRLineRepository
-	PurO         services.PurchaseOrderRepository
-	PurOLine     services.PurchaseOrderLineRepository
-	GI           services.GoodsIssueRepository
-	GILine       services.GoodsIssueLineRepository
-	GR           services.GoodsReceiptRepository
-	GRLine       services.GoodsReceiptLineRepository
-	DT           services.DiscrepancyTicketRepository
-	Invoice      services.SupplierInvoiceRepository
-	InvoiceLine  services.SupplierInvoiceLineRepository
-	Transaction  services.TransactionRepository
-	B2BOrder     services.B2BSalesOrderRepository
-	B2BOrderLine services.B2BSalesOrderLineRepository
-	Asset        services.AssetRepository
-	Machine      services.MachineRepository
-	Node         services.NodeRepository
+	Stock         services.NodeStockRepository
+	Config        services.NodeItemConfigRepository
+	Supplier      services.SupplierRepository
+	ITO           services.InternalTransferOrderRepository
+	ITOLine       services.ITOLineRepository
+	PR            services.PurchaseRequisitionRepository
+	PRLine        services.PRLineRepository
+	PurO          services.PurchaseOrderRepository
+	PurOLine      services.PurchaseOrderLineRepository
+	GI            services.GoodsIssueRepository
+	GILine        services.GoodsIssueLineRepository
+	GR            services.GoodsReceiptRepository
+	GRLine        services.GoodsReceiptLineRepository
+	DT            services.DiscrepancyTicketRepository
+	Invoice       services.SupplierInvoiceRepository
+	InvoiceLine   services.SupplierInvoiceLineRepository
+	Transaction   services.TransactionRepository
+	B2BOrder      services.B2BSalesOrderRepository
+	B2BOrderLine  services.B2BSalesOrderLineRepository
+	Asset         services.AssetRepository
+	Machine       services.MachineRepository
+	Node          services.NodeRepository
 	EquipmentType services.EquipmentTypeRepository
 }
 
@@ -264,6 +264,7 @@ func (f *SupplyChainFacade) GetBOMByItem(ctx context.Context, itemID string) (*m
 //   - orgID, hqNodeID: passed through to HandleROPBreach for PO/ITO creation.
 //   - nodeID, itemID:  the (node, item) pair being consumed.
 //   - qtyBU:           quantity consumed in base units.
+//
 // SetProductionUseCase wires the ProductionUseCase and Orchestrator into the facade after construction.
 // Must be called in app.go after both the facade and productionUC are created.
 func (f *SupplyChainFacade) SetProductionUseCase(uc ProductionUseCase, orchestrator *OrderPoolingOrchestrator) {
@@ -304,8 +305,8 @@ func (f *SupplyChainFacade) ensureProviderStock(ctx context.Context, orgID, hqNo
 	} else if cfg.SourcingStrategy == models.SourcingExternalProcurement {
 		// Externally procured item — synthesize a ROP breach so HQ can buy it
 		result := &services.ROPCheckResult{
-			Breached:     true,
-			CurrentQty:   currentQty,
+			Breached:   true,
+			CurrentQty: currentQty,
 			// Set ReorderPoint to neededQty so (ROP - CurrentQty + SafetyStock) >= shortfall
 			ReorderPoint: neededQty,
 			Strategy:     models.SourcingExternalProcurement,
@@ -343,7 +344,8 @@ func (f *SupplyChainFacade) ensureProviderStock(ctx context.Context, orgID, hqNo
 		return
 	}
 
-	po, err := f.productionUC.CreateProductionOrder(ctx, bom.ID, providerNodeID, shortfallQty)
+	// Pass empty string for refOrderID since this is an MRP triggered PO, not a POS order
+	po, err := f.productionUC.CreateProductionOrder(ctx, bom.ID, providerNodeID, shortfallQty, "")
 	if err != nil {
 		log.Error().Err(err).Str("provider_node_id", providerNodeID).Str("item_id", itemID).
 			Msg("[SupplyChainFacade] ensureProviderStock: failed to create Production Order")
@@ -357,7 +359,6 @@ func (f *SupplyChainFacade) ensureProviderStock(ctx context.Context, orgID, hqNo
 		Float64("produce_qty", shortfallQty).
 		Msg("[SupplyChainFacade] ✅ Auto-created Production Order at Provider to fulfill ITO demand")
 
-	// Enqueue into the orchestrator for automatic batch decomposition.
 	if f.orchestrator != nil {
 		f.orchestrator.Enqueue(po)
 	}
@@ -367,6 +368,22 @@ func (f *SupplyChainFacade) StockOutWithROP(ctx context.Context, orgID, hqNodeID
 	result, err := f.Inventory.StockOut(ctx, nodeID, itemID, qtyBU)
 	if err != nil {
 		return fmt.Errorf("facade: StockOutWithROP: %w", err)
+	}
+	return f.HandleROPBreach(ctx, orgID, hqNodeID, result)
+}
+
+func (f *SupplyChainFacade) InitStockWithROP(ctx context.Context, orgID, hqNodeID, nodeID, itemID string, qtyBU float64) error {
+	result, err := f.Inventory.InitStock(ctx, nodeID, itemID, qtyBU)
+	if err != nil {
+		return fmt.Errorf("facade: InitStockWithROP: %w", err)
+	}
+	return f.HandleROPBreach(ctx, orgID, hqNodeID, result)
+}
+
+func (f *SupplyChainFacade) TriggerROPCheck(ctx context.Context, orgID, hqNodeID, nodeID, itemID string) error {
+	result, err := f.Inventory.CheckROP(ctx, nodeID, itemID)
+	if err != nil {
+		return fmt.Errorf("facade: TriggerROPCheck: %w", err)
 	}
 	return f.HandleROPBreach(ctx, orgID, hqNodeID, result)
 }
@@ -423,4 +440,94 @@ func (f *SupplyChainFacade) RunMRPForProductionOrder(ctx context.Context, orgID,
 			log.Error().Err(err).Str("item_id", line.ItemID).Msg("[SupplyChainFacade] MRP: failed to handle ROP breach")
 		}
 	}
+}
+
+// IsProducedLocally determines if a given node is responsible for producing an item locally.
+// An item is considered locally produced if:
+// 1. It has a BOM.
+// 2. The node's sourcing strategy for this item is NOT External Procurement or Internal Transfer.
+func (f *SupplyChainFacade) IsProducedLocally(ctx context.Context, nodeID, itemID string) bool {
+	if f.productionUC == nil {
+		return false
+	}
+	bom, _, err := f.productionUC.GetFullBOMByItem(ctx, itemID)
+	if err != nil || bom == nil {
+		return false // No BOM -> raw material or simple product
+	}
+
+	cfg, err := f.Inventory.GetConfig(ctx, nodeID, itemID)
+	if err == nil && cfg != nil {
+		if cfg.SourcingStrategy == models.SourcingExternalProcurement || cfg.SourcingStrategy == models.SourcingInternalTransfer {
+			return false // Sourced from outside or another node, not produced here
+		}
+	}
+	return true
+}
+
+// DispatchToKitchen creates a Production Order and pushes it to the KDS orchestrator.
+// Called by POS when a locally produced item is ordered.
+func (f *SupplyChainFacade) DispatchToKitchen(ctx context.Context, nodeID, itemID string, qty float64, orderID string) error {
+	if f.productionUC == nil || f.orchestrator == nil {
+		return fmt.Errorf("facade: DispatchToKitchen: production module not initialized")
+	}
+
+	if !f.IsProducedLocally(ctx, nodeID, itemID) {
+		return nil // Nothing to do
+	}
+
+	bom, _, err := f.productionUC.GetFullBOMByItem(ctx, itemID)
+	if err != nil || bom == nil {
+		return fmt.Errorf("facade: DispatchToKitchen: could not find BOM for locally produced item")
+	}
+
+	po, err := f.productionUC.CreateProductionOrder(ctx, bom.ID, nodeID, qty, orderID)
+	if err != nil {
+		return fmt.Errorf("facade: DispatchToKitchen: failed to create PO: %w", err)
+	}
+
+	log.Info().Str("po_id", po.ID).Str("node_id", nodeID).Str("item_id", itemID).Msg("[SupplyChainFacade] Dispatched POS order item to Kitchen (KDS)")
+	f.orchestrator.Enqueue(po)
+	return nil
+}
+
+// GetProductionStatusForOrders populates the ProductionStatus field for a list of POS orders.
+// It queries the production module to find linked ProductionOrders and checks if they are completed.
+func (f *SupplyChainFacade) GetProductionStatusForOrders(ctx context.Context, orders []*models.Order) error {
+	if f.productionUC == nil || len(orders) == 0 {
+		return nil
+	}
+
+	var orderIDs []string
+	for _, o := range orders {
+		orderIDs = append(orderIDs, o.ID)
+	}
+
+	posByOrder, err := f.productionUC.GetPOsByRefOrderIDs(ctx, orderIDs)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range orders {
+		pos := posByOrder[o.ID]
+		if len(pos) == 0 {
+			// No production orders tied to this POS order
+			o.ProductionStatus = ""
+			continue
+		}
+
+		allCompleted := true
+		for _, po := range pos {
+			if po.Status != models.POCompleted && po.Status != models.POCancelled {
+				allCompleted = false
+				break
+			}
+		}
+
+		if allCompleted {
+			o.ProductionStatus = "READY"
+		} else {
+			o.ProductionStatus = "COOKING"
+		}
+	}
+	return nil
 }

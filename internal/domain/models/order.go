@@ -47,6 +47,9 @@ type Order struct {
 	DeadlineAt  *time.Time  `json:"deadline_at,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+
+	// Transient fields for UI
+	ProductionStatus string `json:"production_status,omitempty" bson:"-"` // e.g. "COOKING", "READY"
 }
 
 // OrderItem is a single item line within an Order.

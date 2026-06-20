@@ -16,7 +16,10 @@ import (
 
 type ProductionUseCase interface {
 	// CreateProductionOrder initiates a new PO by snapshotting the BOM/SOP.
-	CreateProductionOrder(ctx context.Context, bomID, nodeID string, targetQty float64) (*models.ProductionOrder, error)
+	CreateProductionOrder(ctx context.Context, bomID, nodeID string, targetQty float64, refOrderID string) (*models.ProductionOrder, error)
+
+	// GetPOsByRefOrderIDs returns a map of referenceOrderID to their corresponding ProductionOrders.
+	GetPOsByRefOrderIDs(ctx context.Context, orderIDs []string) (map[string][]*models.ProductionOrder, error)
 	GetProductionOrder(ctx context.Context, id string) (*models.ProductionOrder, error)
 	ListProductionOrdersByNode(ctx context.Context, nodeID string) ([]*models.ProductionOrder, error)
 	ListAllOrders(ctx context.Context) ([]*models.ProductionOrder, error)
@@ -58,7 +61,7 @@ func NewProductionUseCase(
 	}
 }
 
-func (uc *productionUseCase) CreateProductionOrder(ctx context.Context, bomID, nodeID string, targetQty float64) (*models.ProductionOrder, error) {
+func (uc *productionUseCase) CreateProductionOrder(ctx context.Context, bomID, nodeID string, targetQty float64, refOrderID string) (*models.ProductionOrder, error) {
 	// 1. Validate BOM exists
 	bom, err := uc.bomRepo.FindByID(ctx, bomID)
 	if err != nil {
@@ -92,17 +95,18 @@ func (uc *productionUseCase) CreateProductionOrder(ctx context.Context, bomID, n
 
 	// 5. Create the Production Order
 	po := &models.ProductionOrder{
-		ID:           uuid.NewString(),
-		ItemID:       bom.OutputItemID,
-		BOMID:        bomID,
-		SOPID:        sop.ID,
-		NodeID:       nodeID,
-		TargetQty:    targetQty,
-		YieldRate:    yieldRate,
-		PlannedInput: plannedInput,
-		Status:       models.POPending,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:               uuid.NewString(),
+		ItemID:           bom.OutputItemID,
+		BOMID:            bomID,
+		SOPID:            sop.ID,
+		NodeID:           nodeID,
+		ReferenceOrderID: refOrderID,
+		TargetQty:        targetQty,
+		YieldRate:        yieldRate,
+		PlannedInput:     plannedInput,
+		Status:           models.POPending,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	if err := uc.poRepo.Create(ctx, po); err != nil {
@@ -302,6 +306,24 @@ func validateDAG(steps []*models.SOPStep) error {
 	}
 
 	return nil
+}
+
+func (uc *productionUseCase) GetPOsByRefOrderIDs(ctx context.Context, orderIDs []string) (map[string][]*models.ProductionOrder, error) {
+	if len(orderIDs) == 0 {
+		return nil, nil
+	}
+	pos, err := uc.poRepo.FindByReferenceOrderIDs(ctx, orderIDs)
+	if err != nil {
+		return nil, err
+	}
+	
+	result := make(map[string][]*models.ProductionOrder)
+	for _, po := range pos {
+		if po.ReferenceOrderID != "" {
+			result[po.ReferenceOrderID] = append(result[po.ReferenceOrderID], po)
+		}
+	}
+	return result, nil
 }
 
 func (uc *productionUseCase) CreateSOP(ctx context.Context, bomID string, steps []*models.SOPStep) (*models.SOP, error) {

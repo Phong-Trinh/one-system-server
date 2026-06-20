@@ -51,9 +51,11 @@ type SOPStep struct {
 	Duration             int      `json:"duration"`     // Estimated duration in seconds
 	Description          string   `json:"description"`  // Human-readable instruction for staff
 	
-	// Bin-packing inputs for allocation engine
-	SlotConsumption float64 `json:"slot_consumption"` // How much machine capacity one unit of target output requires
-	AllowMix        bool    `json:"allow_mix"`        // Whether this step can share a machine batch with other orders
+	// Bin-packing inputs — defined at SOP authoring time, stored on the step itself.
+	// slot_consumption: how many capacity units one batch unit requires on the assigned machine.
+	// allow_mix: if false, the machine must be dedicated to this item type for the entire cycle.
+	SlotConsumption float64 `json:"slot_consumption"` // capacity units consumed per 1 batch unit
+	AllowMix        bool    `json:"allow_mix"`        // false = exclusive machine use required
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────
@@ -87,6 +89,7 @@ type ProductionOrder struct {
 	BOMID          string     `json:"bom_id"`        // FK → BOM
 	SOPID          string     `json:"sop_id"`        // FK → SOP
 	NodeID         string     `json:"node_id"`       // FK → Node (where production happens)
+	ReferenceOrderID string   `json:"reference_order_id,omitempty"` // FK → Order (the POS order that triggered this)
 	TargetQty      float64    `json:"target_qty"`    // Units to produce (in base unit)
 	YieldRate      float64    `json:"yield_rate"`    // Expected yield ratio (e.g., 0.95 = 95% expected output)
 	PlannedInput   float64    `json:"planned_input"` // target_qty / yield_rate — raw input units needed
@@ -154,9 +157,10 @@ type ProductionBatch struct {
 	SOPStepID string      `json:"sop_step_id"` // FK → SOPStep (the step this batch executes)
 	NodeID    string      `json:"node_id"`     // FK → Node (where the machine lives)
 	MachineID string      `json:"machine_id"`  // FK → Machine (the physical machine assigned)
+	ReferenceOrderID string `json:"reference_order_id,omitempty"` // FK → Order
 	ItemID    string      `json:"item_id"`     // Single item type processed in this batch
 	Qty       float64     `json:"qty"`         // Units in this batch (base unit)
-	// SlotsUsed = Qty × ItemCapacityConfig.slot_consumption — must not exceed Machine.max_capacity.
+	// SlotsUsed = Qty × SOPStep.SlotConsumption — must not exceed Machine.max_capacity.
 	SlotsUsed float64     `json:"slots_used"`
 	Status    BatchStatus `json:"status"`
 

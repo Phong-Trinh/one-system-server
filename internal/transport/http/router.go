@@ -128,8 +128,10 @@ func NewRouter(
 		{
 			kds.POST("/batches/:id/confirm-placement", kdsH.ConfirmPlacement)
 			kds.POST("/batches/:id/confirm-completion", kdsH.ConfirmCompletion)
-			kds.GET("/batches", kdsH.ListBatches)  // ?node_id=&status=
-			kds.GET("/pool", kdsH.GetPoolStatus)   // Pool countdown for UI
+			kds.POST("/batches/bulk-start", kdsH.BulkConfirmPlacement)
+			kds.POST("/batches/bulk-complete", kdsH.BulkConfirmCompletion)
+			kds.GET("/batches", kdsH.ListBatches) // ?node_id=&status=
+			kds.GET("/pool", kdsH.GetPoolStatus)  // Pool countdown for UI
 		}
 
 		// Production (BOM, SOP, Production Orders)
@@ -161,7 +163,7 @@ func NewRouter(
 		saleOrders := v1.Group("/orders")
 		{
 			saleOrders.POST("", orderH.Create)
-			saleOrders.GET("", orderH.List)      // ?node_id=
+			saleOrders.GET("", orderH.List) // ?node_id=
 			saleOrders.GET("/:id", orderH.GetByID)
 			saleOrders.PATCH("/:id/complete", orderH.Complete)
 			saleOrders.PATCH("/:id/cancel", orderH.Cancel)
@@ -172,7 +174,7 @@ func NewRouter(
 		itos := v1.Group("/itos")
 		{
 			itos.POST("", itoH.Create)
-			itos.GET("", itoH.List)      // ?node_id=
+			itos.GET("", itoH.List) // ?node_id=
 			itos.GET("/:id", itoH.GetByID)
 			itos.PATCH("/:id/approve", itoH.Approve)
 			itos.PATCH("/:id/reject", itoH.Reject)
@@ -181,9 +183,10 @@ func NewRouter(
 		}
 
 		// Inventory (NodeStock + NodeItemConfig)
-		invH := newInventoryHandler(supplyFacade.Inventory, stockRepo, configRepo)
-		v1.GET("/inventory", invH.ListStock)           // ?node_id=
+		invH := newInventoryHandler(supplyFacade, supplyFacade.Inventory, stockRepo, configRepo)
+		v1.GET("/inventory", invH.ListStock) // ?node_id=
 		v1.POST("/inventory/init", invH.InitStock)
+		v1.POST("/inventory/trigger-rop", invH.TriggerROP)
 		v1.GET("/node-item-configs", invH.ListConfigs) // ?node_id=
 		v1.PUT("/node-item-configs", invH.UpsertConfig)
 

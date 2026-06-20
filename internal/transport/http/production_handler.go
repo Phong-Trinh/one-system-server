@@ -32,7 +32,7 @@ func (h *productionHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	po, err := h.uc.CreateProductionOrder(c.Request.Context(), req.BOMID, req.NodeID, req.TargetQty)
+	po, err := h.uc.CreateProductionOrder(c.Request.Context(), req.BOMID, req.NodeID, req.TargetQty, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

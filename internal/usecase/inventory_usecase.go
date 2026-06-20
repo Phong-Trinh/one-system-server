@@ -41,9 +41,9 @@ func (uc *inventoryUseCase) GetStock(ctx context.Context, nodeID, itemID string)
 
 // InitStock sets the qty_on_hand to a specific value (stock-take / onboarding).
 // This does NOT trigger a ROP check; it is an intentional manual override.
-func (uc *inventoryUseCase) InitStock(ctx context.Context, nodeID, itemID string, qtyBU float64) error {
+func (uc *inventoryUseCase) InitStock(ctx context.Context, nodeID, itemID string, qtyBU float64) (*services.ROPCheckResult, error) {
 	if qtyBU < 0 {
-		return fmt.Errorf("inventory: InitStock: qty must be ≥ 0, got %v", qtyBU)
+		return nil, fmt.Errorf("inventory: InitStock: qty must be ≥ 0, got %v", qtyBU)
 	}
 	stock := &models.NodeStock{
 		NodeID:        nodeID,
@@ -51,7 +51,10 @@ func (uc *inventoryUseCase) InitStock(ctx context.Context, nodeID, itemID string
 		QtyOnHand:     qtyBU,
 		LastUpdatedAt: time.Now(),
 	}
-	return uc.stockRepo.Upsert(ctx, stock)
+	if err := uc.stockRepo.Upsert(ctx, stock); err != nil {
+		return nil, err
+	}
+	return uc.checkROPInternal(ctx, nodeID, itemID, qtyBU)
 }
 
 // StockIn increases qty_on_hand by qtyBU.

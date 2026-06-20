@@ -26,7 +26,9 @@ async function renderStoITO() {
 
   const statusColor = {
     'DRAFT': 'badge-dim',
+    'PENDING_APPROVAL': 'badge-orange',
     'APPROVED': 'badge-primary',
+    'AUTO_APPROVED': 'badge-primary',
     'REJECTED': 'badge-red',
     'IN_TRANSIT': 'badge-orange',
     'COMPLETED': 'badge-green',
@@ -40,7 +42,7 @@ async function renderStoITO() {
 
     const firstLineItem = ito.lines && ito.lines.length > 0 ? (itemMap[ito.lines[0].item_id] || {name: ito.lines[0].item_id}).name : '—';
     const totalLines = ito.lines ? ito.lines.length : 0;
-    const isAuto = ito.created_by_staff_id === 'SYSTEM';
+    const isAuto = ito.trigger === 'ROP_AUTOMATIC';
 
     return `
       <tr>
@@ -104,13 +106,13 @@ function openCreateITOModal(nodeId, providerOptionsHtml, itemOptionsHtml) {
       <div style="font-weight:600;margin-top:8px">Items to Request</div>
       <div id="ito-lines" class="flex col gap-8">
         <div class="ito-line flex row gap-8 align-center">
-          <select class="ito-item" style="flex:2">${itemOptionsHtml}</select>
+          <select class="ito-item" style="flex:2;min-width:150px;text-overflow:ellipsis;white-space:nowrap">${itemOptionsHtml}</select>
           <input class="ito-qty" type="number" value="1" min="1" placeholder="Qty" style="flex:1;min-width:60px" />
           <input class="ito-unit" value="pieces" placeholder="Unit" style="flex:1;min-width:60px" />
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="this.closest('.ito-line').remove()">✕</button>
         </div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="addITOLine(\`${itemOptionsHtml.replace(/`/g, '\\`')}\`)">+ Add Item</button>
+      <button class="btn btn-outline btn-sm" onclick="addITOLine()">+ Add Item</button>
     </div>
   `, [
     { label: 'Submit Request', primary: true, action: async () => {
@@ -144,17 +146,23 @@ function openCreateITOModal(nodeId, providerOptionsHtml, itemOptionsHtml) {
   ]);
 }
 
-function addITOLine(itemOptionsHtml) {
+function addITOLine() {
   const container = document.getElementById('ito-lines');
+  const templateSelect = container.querySelector('.ito-item');
+  const itemOptionsHtml = templateSelect ? templateSelect.innerHTML : '';
   const div = document.createElement('div');
   div.className = 'ito-line flex row gap-8 align-center';
   div.innerHTML = `
-    <select class="ito-item" style="flex:2">${itemOptionsHtml}</select>
+    <select class="ito-item" style="flex:2;min-width:150px;text-overflow:ellipsis;white-space:nowrap">${itemOptionsHtml}</select>
     <input class="ito-qty" type="number" value="1" min="1" placeholder="Qty" style="flex:1;min-width:60px" />
     <input class="ito-unit" value="pieces" placeholder="Unit" style="flex:1;min-width:60px" />
     <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="this.closest('.ito-line').remove()">✕</button>
   `;
   container.appendChild(div);
+  const newSelect = div.querySelector('.ito-item');
+  if (newSelect && newSelect.options.length > 0) {
+    newSelect.selectedIndex = 0;
+  }
 }
 
 async function openITODetail(id) {

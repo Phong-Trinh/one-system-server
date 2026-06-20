@@ -118,16 +118,46 @@ async function renderFacKDS() {
     `;
     
     if (mBatches.length > 0) {
-      bHtml = mBatches.map(b => {
-        const item = itemMap[b.item_id] || { name: b.item_id };
-        const isProgress = b.status === 'IN_PROGRESS';
+      // Group batches by step_name + status
+      const groupedBatches = {};
+      mBatches.forEach(b => {
+        const key = b.step_name + '_' + b.status;
+        if (!groupedBatches[key]) {
+          groupedBatches[key] = {
+            ids: [],
+            item_ids: new Set(),
+            status: b.status,
+            step_name: b.step_name,
+            qty: 0,
+            slots_used: 0,
+            duration: b.duration,
+            elapsed: b.elapsed,
+            orders: []
+          };
+        }
+        groupedBatches[key].ids.push(b.id);
+        groupedBatches[key].item_ids.add(b.item_id);
+        groupedBatches[key].qty += b.qty;
+        groupedBatches[key].slots_used += b.slots_used;
+        // Keep the max elapsed time if IN_PROGRESS (so timer is somewhat accurate for grouped items)
+        if (b.elapsed > groupedBatches[key].elapsed) {
+          groupedBatches[key].elapsed = b.elapsed;
+        }
+        if (b.reference_order_id && !groupedBatches[key].orders.includes(b.reference_order_id)) {
+          groupedBatches[key].orders.push(b.reference_order_id);
+        }
+      });
+
+      bHtml = Object.values(groupedBatches).map(gb => {
+        const itemNames = Array.from(gb.item_ids).map(id => itemMap[id] ? itemMap[id].name : id).join(', ');
+        const isProgress = gb.status === 'IN_PROGRESS';
         let statusStyle = isProgress ? 'background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.4)' : 
-                          b.status === 'ALLOCATED' ? 'background: rgba(59, 130, 246, 0.05); border-color: rgba(59, 130, 246, 0.4)' : '';
+                          gb.status === 'ALLOCATED' ? 'background: rgba(59, 130, 246, 0.05); border-color: rgba(59, 130, 246, 0.4)' : '';
         
         let timerHtml = '';
         if (isProgress) {
-          const timeLeft = Math.max(0, b.duration - b.elapsed);
-          const progressPercent = Math.min(100, (b.elapsed / b.duration) * 100);
+          const timeLeft = Math.max(0, gb.duration - gb.elapsed);
+          const progressPercent = Math.min(100, (gb.elapsed / gb.duration) * 100);
           timerHtml = `
             <div style="margin-bottom:12px">
               <div class="flex row justify-between small" style="color: var(--green); margin-bottom: 4px; font-weight: 600">
@@ -141,19 +171,26 @@ async function renderFacKDS() {
           `;
         }
 
+        const ordersHtml = gb.orders.length > 0 
+          ? `<div class="dim small" style="margin-bottom:4px; font-size:11px">Orders: ${gb.orders.map(o => o.slice(0, 8)).join(', ')}</div>`
+          : '';
+
+        const idsJson = JSON.stringify(gb.ids).replace(/"/g, '&quot;');
+
         return `
           <div style="margin-bottom:16px; padding:12px; border:1px solid var(--border); border-radius:8px; ${statusStyle}">
             <div style="font-weight:600; margin-bottom: 4px" class="flex row justify-between align-center">
-              <span>${item.name}</span>
-              <span class="badge ${isProgress ? 'badge-green' : 'badge-primary'}" style="font-size:10px">${b.status}</span>
+              <span>${gb.step_name}</span>
+              <span class="badge ${isProgress ? 'badge-green' : 'badge-primary'}" style="font-size:10px">${gb.status}</span>
             </div>
-            <div class="dim small" style="margin-bottom:12px">Qty: ${b.qty} (Slots: ${b.slots_used}) • Step: ${b.step_name}</div>
+            ${ordersHtml}
+            <div class="dim small" style="margin-bottom:12px">Qty: ${gb.qty} (Slots: ${gb.slots_used}) • Items: ${itemNames}</div>
             ${timerHtml}
-            ${b.status === 'ALLOCATED' ? `
-              <button class="btn btn-primary fw btn-sm" onclick="startBatch('${b.id}')">▶ Start Batch</button>
+            ${gb.status === 'ALLOCATED' ? `
+              <button class="btn btn-primary fw btn-sm" onclick="startBatches('${idsJson}')">▶ Start Batch</button>
             ` : ''}
-            ${b.status === 'IN_PROGRESS' ? `
-              <button class="btn btn-green fw btn-sm" onclick="completeBatch('${b.id}')">✔ Complete</button>
+            ${gb.status === 'IN_PROGRESS' ? `
+              <button class="btn btn-green fw btn-sm" onclick="completeBatches('${idsJson}')">✔ Complete</button>
             ` : ''}
           </div>
         `;
@@ -216,19 +253,21 @@ async function renderFacKDS() {
 
 /* ── Actions ─────────────────────────────────────────────── */
 
-async function startBatch(id) {
+async function startBatches(idsJson) {
   try {
-    await api.confirmBatchPlacement(id);
-    toast('Batch started!', 'success');
-    navigate('fac-kds', 'Kitchen Display System');
+    const ids = JSON.parse(idsJson.replace(/&quot;/g, '"'));
+    await api.bulkConfirmBatchPlacement(ids);
+    toast('Batches started!', 'success');
+    navigate(state.page, 'Kitchen Display System');
   } catch(e) { toast(e.message, 'error'); }
 }
 
-async function completeBatch(id) {
+async function completeBatches(idsJson) {
   try {
-    await api.confirmBatchCompletion(id);
-    toast('Batch completed!', 'success');
-    navigate('fac-kds', 'Kitchen Display System');
+    const ids = JSON.parse(idsJson.replace(/&quot;/g, '"'));
+    await api.bulkConfirmBatchCompletion(ids);
+    toast('Batches completed!', 'success');
+    navigate(state.page, 'Kitchen Display System');
   } catch(e) { toast(e.message, 'error'); }
 }
 

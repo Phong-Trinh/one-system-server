@@ -3,13 +3,14 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 async function renderHQROPConfig() {
-  let nodes = [], items = [], configs = [];
+  let nodes = [], items = [], configs = [], suppliers = [];
   let error = null;
 
   try {
-    [nodes, items] = await Promise.all([
+    [nodes, items, suppliers] = await Promise.all([
       api.getNodes(state.orgId),
-      api.getItems(state.orgId)
+      api.getItems(state.orgId),
+      api.getSuppliers(state.orgId)
     ]);
   } catch(e) { error = e.message; }
 
@@ -25,6 +26,12 @@ async function renderHQROPConfig() {
   const itemMap = {};
   (items || []).forEach(it => itemMap[it.id] = it);
 
+  const supMap = {};
+  (suppliers || []).forEach(s => supMap[s.id] = s);
+
+  const nodeMap = {};
+  (nodes || []).forEach(n => nodeMap[n.id] = n);
+
   const nodeOptions = (nodes || []).map(n =>
     `<option value="${n.id}" ${n.id === selectedNodeId ? 'selected' : ''}>${n.name} (${n.type})</option>`
   ).join('');
@@ -35,6 +42,13 @@ async function renderHQROPConfig() {
 
   const rows = configs.map(cfg => {
     const item = itemMap[cfg.item_id] || { name: cfg.item_id };
+    let providerText = '—';
+    if (cfg.sourcing_strategy === 'INTERNAL_TRANSFER' && cfg.provider_node_id) {
+        providerText = nodeMap[cfg.provider_node_id] ? nodeMap[cfg.provider_node_id].name : cfg.provider_node_id;
+    } else if (cfg.sourcing_strategy === 'EXTERNAL_PROCUREMENT' && cfg.supplier_id) {
+        providerText = supMap[cfg.supplier_id] ? supMap[cfg.supplier_id].name : cfg.supplier_id;
+    }
+
     return `
       <tr>
         <td style="font-weight:600">${item.name}</td>
@@ -42,7 +56,7 @@ async function renderHQROPConfig() {
         <td>${cfg.reorder_point}</td>
         <td>${cfg.safety_stock}</td>
         <td>${cfg.supplier_lead_time_days}d</td>
-        <td>${cfg.provider_node_id || cfg.supplier_id || '—'}</td>
+        <td>${providerText}</td>
         <td>
           <button class="btn btn-ghost btn-sm" onclick="openEditROPModal('${selectedNodeId}', '${cfg.item_id}', ${JSON.stringify(cfg).replace(/"/g, '&quot;')})">Edit</button>
         </td>
@@ -84,32 +98,40 @@ async function renderHQROPConfig() {
 /* ── Modals ──────────────────────────────────────────────────────────────── */
 
 async function openCreateROPModal(nodeId) {
-  let items = [];
-  let nodes = [];
+  let items = [], nodes = [], suppliers = [];
   try {
-    [items, nodes] = await Promise.all([api.getItems(state.orgId), api.getNodes(state.orgId)]);
+    [items, nodes, suppliers] = await Promise.all([
+      api.getItems(state.orgId), 
+      api.getNodes(state.orgId),
+      api.getSuppliers(state.orgId)
+    ]);
   } catch(e) {}
 
   const itemOptions = items.map(it => `<option value="${it.id}">${it.name} (${it.type})</option>`).join('');
   const nodeOptions = nodes.map(n => `<option value="${n.id}">${n.name} (${n.type})</option>`).join('');
+  const supOptions = `<option value="">-- No Supplier --</option>` + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+  const currentNode = nodes.find(n => n.id === nodeId);
+  const isFactory = currentNode && currentNode.type === 'FACTORY';
+  const disableStrategy = isFactory ? 'disabled' : '';
 
   showModal('New ROP Configuration', `
     <div class="flex col gap-12">
       <div class="field"><label>Item *</label><select id="rop-item">${itemOptions}</select></div>
       <div class="field">
         <label>Sourcing Strategy *</label>
-        <select id="rop-strategy" onchange="document.getElementById('rop-provider-row').style.display=this.value==='INTERNAL_TRANSFER'?'flex':'none'; document.getElementById('rop-supplier-row').style.display=this.value==='EXTERNAL_PROCUREMENT'?'flex':'none'">
-          <option value="INTERNAL_TRANSFER">Internal Transfer (Factory → Node)</option>
-          <option value="EXTERNAL_PROCUREMENT">External Procurement (Supplier)</option>
+        <select id="rop-strategy" ${disableStrategy} onchange="document.getElementById('rop-provider-row').style.display=this.value==='INTERNAL_TRANSFER'?'flex':'none'; document.getElementById('rop-supplier-row').style.display=this.value==='EXTERNAL_PROCUREMENT'?'flex':'none'">
+          <option value="INTERNAL_TRANSFER" ${!isFactory ? 'selected' : ''}>Internal Transfer (Factory → Node)</option>
+          <option value="EXTERNAL_PROCUREMENT" ${isFactory ? 'selected' : ''}>External Procurement (Supplier)</option>
         </select>
       </div>
-      <div id="rop-provider-row" class="field">
+      <div id="rop-provider-row" class="field" style="display:${isFactory ? 'none' : 'flex'}">
         <label>Provider Node *</label>
         <select id="rop-provider">${nodeOptions}</select>
       </div>
-      <div id="rop-supplier-row" class="field" style="display:none">
-        <label>Supplier ID</label>
-        <input id="rop-supplier" placeholder="supplier ID" />
+      <div id="rop-supplier-row" class="field" style="display:${isFactory ? 'flex' : 'none'}">
+        <label>Supplier (Optional)</label>
+        <select id="rop-supplier">${supOptions}</select>
       </div>
       <div class="flex row gap-12">
         <div class="field" style="flex:1"><label>Reorder Point (BU)</label><input id="rop-rop" type="number" value="50" min="0"/></div>
@@ -145,10 +167,41 @@ async function openCreateROPModal(nodeId) {
   ]);
 }
 
-function openEditROPModal(nodeId, itemId, cfg) {
+async function openEditROPModal(nodeId, itemId, cfg) {
   const config = typeof cfg === 'string' ? JSON.parse(cfg.replace(/&quot;/g, '"')) : cfg;
+  
+  let nodes = [], suppliers = [];
+  try {
+    [nodes, suppliers] = await Promise.all([
+      api.getNodes(state.orgId),
+      api.getSuppliers(state.orgId)
+    ]);
+  } catch(e) {}
+
+  const nodeOptions = nodes.map(n => `<option value="${n.id}" ${n.id === config.provider_node_id ? 'selected' : ''}>${n.name} (${n.type})</option>`).join('');
+  const supOptions = `<option value="">-- No Supplier --</option>` + suppliers.map(s => `<option value="${s.id}" ${s.id === config.supplier_id ? 'selected' : ''}>${s.name}</option>`).join('');
+
+  const currentNode = nodes.find(n => n.id === nodeId);
+  const isFactory = currentNode && currentNode.type === 'FACTORY';
+  const disableStrategy = isFactory ? 'disabled' : '';
+
   showModal('Edit ROP Configuration', `
     <div class="flex col gap-12">
+      <div class="field">
+        <label>Sourcing Strategy *</label>
+        <select id="erop-strategy" ${disableStrategy} onchange="document.getElementById('erop-provider-row').style.display=this.value==='INTERNAL_TRANSFER'?'flex':'none'; document.getElementById('erop-supplier-row').style.display=this.value==='EXTERNAL_PROCUREMENT'?'flex':'none'">
+          <option value="INTERNAL_TRANSFER" ${config.sourcing_strategy === 'INTERNAL_TRANSFER' ? 'selected' : ''}>Internal Transfer (Factory → Node)</option>
+          <option value="EXTERNAL_PROCUREMENT" ${config.sourcing_strategy === 'EXTERNAL_PROCUREMENT' ? 'selected' : ''}>External Procurement (Supplier)</option>
+        </select>
+      </div>
+      <div id="erop-provider-row" class="field" style="display:${config.sourcing_strategy === 'INTERNAL_TRANSFER' ? 'flex' : 'none'}">
+        <label>Provider Node *</label>
+        <select id="erop-provider">${nodeOptions}</select>
+      </div>
+      <div id="erop-supplier-row" class="field" style="display:${config.sourcing_strategy === 'EXTERNAL_PROCUREMENT' ? 'flex' : 'none'}">
+        <label>Supplier (Optional)</label>
+        <select id="erop-supplier">${supOptions}</select>
+      </div>
       <div class="flex row gap-12">
         <div class="field" style="flex:1"><label>Reorder Point (BU)</label><input id="erop-rop" type="number" value="${config.reorder_point || 50}" min="0"/></div>
         <div class="field" style="flex:1"><label>Safety Stock (BU)</label><input id="erop-safety" type="number" value="${config.safety_stock || 20}" min="0"/></div>
@@ -160,11 +213,15 @@ function openEditROPModal(nodeId, itemId, cfg) {
     </div>
   `, [
     { label: 'Save', primary: true, action: async () => {
+      const strategy = document.getElementById('erop-strategy').value;
       try {
         await api.upsertNodeItemConfig({
           ...config,
           node_id: nodeId,
           item_id: itemId,
+          sourcing_strategy: strategy,
+          provider_node_id: strategy === 'INTERNAL_TRANSFER' ? document.getElementById('erop-provider').value : null,
+          supplier_id: strategy === 'EXTERNAL_PROCUREMENT' ? (document.getElementById('erop-supplier').value || null) : null,
           reorder_point: parseFloat(document.getElementById('erop-rop').value) || 50,
           safety_stock: parseFloat(document.getElementById('erop-safety').value) || 20,
           supplier_lead_time_days: parseInt(document.getElementById('erop-lead').value) || 3,

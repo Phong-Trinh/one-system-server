@@ -53,6 +53,7 @@ const NAV_CONFIG = {
     ]},
     { section: 'Operations', pages: [
       { id: 'sto-pos',        label: 'POS Orders',            icon: '🛒' },
+      { id: 'sto-kds',        label: 'KDS (Kitchen View)',    icon: '🖥️' },
       { id: 'sto-inventory',  label: 'Inventory',             icon: '📦' },
     ]},
     { section: 'Supply Chain', pages: [
@@ -153,6 +154,7 @@ function renderPage(id) {
     /* Store */
     'sto-dashboard':  typeof renderStoDashboard === 'function' ? renderStoDashboard : () => 'Loading...',
     'sto-pos':        typeof renderStoPOS === 'function' ? renderStoPOS : () => 'Loading...',
+    'sto-kds':        typeof renderFacKDS === 'function' ? renderFacKDS : () => 'Loading...',
     'sto-inventory':  typeof renderStoInventory === 'function' ? renderStoInventory : () => 'Loading...',
     'sto-ito':        typeof renderStoITO === 'function' ? renderStoITO : () => 'Loading...',
     'sto-pr':         typeof renderStoPR === 'function' ? renderStoPR : () => 'Loading...',

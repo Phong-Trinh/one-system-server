@@ -58,14 +58,61 @@ func (h *KDSHandler) ConfirmCompletion(c *gin.Context) {
 		return
 	}
 
-	// Trigger capacity-aware flush: a machine just freed up → check if pool
-	// has orders that can now be allocated to it immediately.
-	if batch != nil && h.orchestrator != nil {
+	if h.orchestrator != nil && batch != nil {
 		h.orchestrator.TriggerFlushForNode(c.Request.Context(), batch.NodeID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Batch completed"})
 }
+
+// BulkConfirmPlacement starts multiple batches at once
+func (h *KDSHandler) BulkConfirmPlacement(c *gin.Context) {
+	var req struct {
+		BatchIDs []string `json:"batch_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for _, id := range req.BatchIDs {
+		if err := h.allocationUC.ConfirmPlacement(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start batch " + id + ": " + err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Batches started"})
+}
+
+// BulkConfirmCompletion completes multiple batches at once
+func (h *KDSHandler) BulkConfirmCompletion(c *gin.Context) {
+	var req struct {
+		BatchIDs []string `json:"batch_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var nodeID string
+	for _, id := range req.BatchIDs {
+		batch, _ := h.batchRepo.FindByID(c.Request.Context(), id)
+		if batch != nil {
+			nodeID = batch.NodeID
+		}
+		if err := h.allocationUC.ConfirmCompletion(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to complete batch " + id + ": " + err.Error()})
+			return
+		}
+	}
+
+	if h.orchestrator != nil && nodeID != "" {
+		h.orchestrator.TriggerFlushForNode(c.Request.Context(), nodeID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Batches completed"})
+}
+
 
 // KDSBatchView is the denormalized response model for the KDS task queue UI.
 // It enriches a raw ProductionBatch with human-readable step and timing info.

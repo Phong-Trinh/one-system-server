@@ -8,20 +8,24 @@ import (
 
 	"one-system-server/internal/domain/models"
 	"one-system-server/internal/domain/services"
+	"one-system-server/internal/usecase"
 )
 
 type inventoryHandler struct {
+	facade     *usecase.SupplyChainFacade
 	invSvc     services.InventoryService
 	stockRepo  services.NodeStockRepository
 	configRepo services.NodeItemConfigRepository
 }
 
 func newInventoryHandler(
+	facade *usecase.SupplyChainFacade,
 	invSvc services.InventoryService,
 	stockRepo services.NodeStockRepository,
 	configRepo services.NodeItemConfigRepository,
 ) *inventoryHandler {
 	return &inventoryHandler{
+		facade:     facade,
 		invSvc:     invSvc,
 		stockRepo:  stockRepo,
 		configRepo: configRepo,
@@ -57,11 +61,33 @@ func (h *inventoryHandler) InitStock(c *gin.Context) {
 		return
 	}
 
-	if err := h.invSvc.InitStock(c.Request.Context(), req.NodeID, req.ItemID, req.QtyBU); err != nil {
+	// Hardcode orgID and hqNodeID since this is a global initialization tool.
+	// In a real app, orgID would come from token, hqNodeID from config.
+	// Hardcode orgID and hqNodeID since this is a global initialization tool.
+	// In a real app, orgID would come from token, hqNodeID from config.
+	if err := h.facade.InitStockWithROP(c.Request.Context(), "SNAPBITE_ORG", "HQ", req.NodeID, req.ItemID, req.QtyBU); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "stock initialized", "node_id": req.NodeID, "item_id": req.ItemID, "qty_bu": req.QtyBU})
+}
+
+// POST /api/v1/inventory/trigger-rop — Manually trigger a ROP check
+func (h *inventoryHandler) TriggerROP(c *gin.Context) {
+	var req struct {
+		NodeID string `json:"node_id" binding:"required"`
+		ItemID string `json:"item_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.facade.TriggerROPCheck(c.Request.Context(), "SNAPBITE_ORG", "HQ", req.NodeID, req.ItemID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ROP check triggered"})
 }
 
 // GET /api/v1/node-item-configs?node_id=
@@ -83,15 +109,15 @@ func (h *inventoryHandler) ListConfigs(c *gin.Context) {
 // PUT /api/v1/node-item-configs — Upsert a NodeItemConfig (set ROP, strategy, etc.)
 func (h *inventoryHandler) UpsertConfig(c *gin.Context) {
 	var req struct {
-		NodeID               string                  `json:"node_id" binding:"required"`
-		ItemID               string                  `json:"item_id" binding:"required"`
-		SourcingStrategy     models.SourcingStrategy `json:"sourcing_strategy" binding:"required"`
-		ProviderNodeID       *string                 `json:"provider_node_id"`
-		SupplierID           *string                 `json:"supplier_id"`
-		ReorderPoint         float64                 `json:"reorder_point"`
-		SafetyStock          float64                 `json:"safety_stock"`
-		SupplierLeadTimeDays int                     `json:"supplier_lead_time_days"`
-		ConsumptionWindowDays int                    `json:"consumption_window_days"`
+		NodeID                string                  `json:"node_id" binding:"required"`
+		ItemID                string                  `json:"item_id" binding:"required"`
+		SourcingStrategy      models.SourcingStrategy `json:"sourcing_strategy" binding:"required"`
+		ProviderNodeID        *string                 `json:"provider_node_id"`
+		SupplierID            *string                 `json:"supplier_id"`
+		ReorderPoint          float64                 `json:"reorder_point"`
+		SafetyStock           float64                 `json:"safety_stock"`
+		SupplierLeadTimeDays  int                     `json:"supplier_lead_time_days"`
+		ConsumptionWindowDays int                     `json:"consumption_window_days"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

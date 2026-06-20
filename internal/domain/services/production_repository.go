@@ -40,6 +40,8 @@ type SOPRepository interface {
 	FindStepByID(ctx context.Context, sopStepID string) (*models.SOPStep, error)
 	ListSteps(ctx context.Context, sopID string) ([]*models.SOPStep, error)
 	DeleteStep(ctx context.Context, sopID string, stepID string) error
+	// DeleteStepsBySOPID removes all steps for a given SOP (used before re-seeding or cascade-deleting a SOP).
+	DeleteStepsBySOPID(ctx context.Context, sopID string) error
 }
 
 // ── Production Order ──────────────────────────────────────────────────────────
@@ -55,6 +57,7 @@ type ProductionOrderRepository interface {
 	UpdateStatus(ctx context.Context, id string, status models.POStatus, actualOutput *float64) error
 	Update(ctx context.Context, po *models.ProductionOrder) error
 	Delete(ctx context.Context, id string) error
+	FindByReferenceOrderIDs(ctx context.Context, orderIDs []string) ([]*models.ProductionOrder, error)
 
 	// BOM Snapshot (1:1 with ProductionOrder — written at PO creation)
 	SaveSnapshot(ctx context.Context, snap *models.BOMSnapshot) error

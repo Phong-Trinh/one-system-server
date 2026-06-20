@@ -63,7 +63,7 @@ func New(ctx context.Context) (*App, error) {
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
 
 	nodeItemConfigRepo := mongorepo.NewNodeItemConfigRepository(mongoClient, dbName)
-	
+
 	// Supply Chain Repositories
 	stockRepo := mongorepo.NewNodeStockRepository(mongoClient, dbName)
 	supplierRepo := mongorepo.NewSupplierRepository(mongoClient, dbName)
@@ -103,28 +103,28 @@ func New(ctx context.Context) (*App, error) {
 
 	// ── Supply Chain Facade ───────────────────────────────────────────────────
 	supplyRepos := usecase.SupplyChainRepos{
-		Stock:        stockRepo,
-		Config:       nodeItemConfigRepo,
-		Supplier:     supplierRepo,
-		ITO:          itoRepo,
-		ITOLine:      itoLineRepo,
-		PR:           prRepo,
-		PRLine:       prLineRepo,
-		PurO:         puroRepo,
-		PurOLine:     puroLineRepo,
-		GI:           giRepo,
-		GILine:       giLineRepo,
-		GR:           grRepo,
-		GRLine:       grLineRepo,
-		DT:           dtRepo,
-		Invoice:      invoiceRepo,
-		InvoiceLine:  invoiceLineRepo,
-		Transaction:  txRepo,
-		B2BOrder:     b2bRepo,
-		B2BOrderLine: b2bLineRepo,
-		Asset:        assetRepo,
-		Machine:      machineRepo,
-		Node:         nodeRepo,
+		Stock:         stockRepo,
+		Config:        nodeItemConfigRepo,
+		Supplier:      supplierRepo,
+		ITO:           itoRepo,
+		ITOLine:       itoLineRepo,
+		PR:            prRepo,
+		PRLine:        prLineRepo,
+		PurO:          puroRepo,
+		PurOLine:      puroLineRepo,
+		GI:            giRepo,
+		GILine:        giLineRepo,
+		GR:            grRepo,
+		GRLine:        grLineRepo,
+		DT:            dtRepo,
+		Invoice:       invoiceRepo,
+		InvoiceLine:   invoiceLineRepo,
+		Transaction:   txRepo,
+		B2BOrder:      b2bRepo,
+		B2BOrderLine:  b2bLineRepo,
+		Asset:         assetRepo,
+		Machine:       machineRepo,
+		Node:          nodeRepo,
 		EquipmentType: eqTypeRepo,
 	}
 	supplyFacade := usecase.NewSupplyChainFacade(supplyRepos)
@@ -155,7 +155,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	// ── Seed Kitchen Demo Data (Station types, Machines, Items, BOMs, SOPs) ──
-	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo); err != nil {
+	if err := SeedKitchenData(ctx, stationTypeRepo, machineRepo, itemRepo, bomRepo, sopRepo, nodeItemConfigRepo, supplierRepo, stockRepo); err != nil {
 		log.Error().Err(err).Msg("failed to seed kitchen demo data")
 	}
 
@@ -165,6 +165,7 @@ func New(ctx context.Context) (*App, error) {
 func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, nodeRepo services.NodeRepository, staffRepo services.StaffRepository) error {
 	orgId := "SNAPBITE_ORG"
 	siteId := "SITE_1"
+	siteId2 := "SITE_Q1"
 
 	// 1. Ensure Org exists
 	existingOrg, _ := orgRepo.FindByID(ctx, orgId)
@@ -176,12 +177,12 @@ func (a *App) seedData(ctx context.Context, orgRepo services.OrgRepository, node
 		})
 	}
 
-	// 2. Ensure Nodes exist (1 HQ, 1 Factory, 1 Store at the same site)
+	// 2. Ensure Nodes exist (1 HQ, 1 Factory, 1 Store at the same site, 1 Store at a different site)
 	nodes := []models.Node{
 		{ID: "HQ", OrgID: orgId, Type: models.NodeHQ, Name: "Headquarters", Address: "123 Main St", SiteID: &siteId},
 		{ID: "FACTORY", OrgID: orgId, Type: models.NodeFactory, Name: "Factory", Address: "123 Main St", SiteID: &siteId},
 		{ID: "STORE", OrgID: orgId, Type: models.NodeStore, Name: "Store #1", Address: "123 Main St", SiteID: &siteId},
-		{ID: "CUA_HANG_01", OrgID: orgId, Type: models.NodeStore, Name: "SnapBite # Hoàng Hoa Thám", Address: "123 Hoàng Hoa Thám, Ba Đình, Hà Nội"},
+		{ID: "STORE2", OrgID: orgId, Type: models.NodeStore, Name: "S#2 chi nhánh quận 1", Address: "Quận 1", SiteID: &siteId2},
 	}
 
 	for _, n := range nodes {

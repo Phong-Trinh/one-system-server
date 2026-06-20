@@ -191,6 +191,16 @@ func (uc *itoUseCase) CreateManualITO(ctx context.Context, orgID, requesterNodeI
 		return nil, fmt.Errorf("ito: CreateManualITO: at least one line required")
 	}
 
+	for _, l := range lines {
+		hasActive, err := uc.HasActiveITO(ctx, requesterNodeID, l.ItemID)
+		if err != nil {
+			return nil, fmt.Errorf("ito: CreateManualITO: check active: %w", err)
+		}
+		if hasActive {
+			return nil, fmt.Errorf("ito: CreateManualITO: active transfer already exists for item %s", l.ItemID)
+		}
+	}
+
 	isSameSite, err := uc.isSameSite(ctx, requesterNodeID, providerNodeID)
 	if err != nil {
 		return nil, err

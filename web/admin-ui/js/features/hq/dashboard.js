@@ -5,6 +5,7 @@
 
 async function renderHQDashboard() {
   let pendingPRsCount = 0;
+  let pendingDraftPOsCount = 0;
   let pendingGRsCount = 0;
   let pendingAssetsCount = 0;
 
@@ -17,6 +18,7 @@ async function renderHQDashboard() {
     
     pendingPRsCount = (prs || []).length;
     pendingGRsCount = (puros || []).filter(p => p.status === 'ON_WAY_DELIVERY').length;
+    pendingDraftPOsCount = (puros || []).filter(p => p.status === 'DRAFT').length;
     pendingAssetsCount = (assets || []).filter(a => a.status === 'PENDING_REGISTRATION').length;
   } catch (err) {}
 
@@ -30,6 +32,7 @@ async function renderHQDashboard() {
     <h3 style="margin-bottom: 12px">Action Required</h3>
     <div class="kpi-grid">
       ${kpi('📝', 'Pending PRs', pendingPRsCount, 'var(--primary)', 'Needs approval')}
+      ${kpi('🛒', 'Draft POs (Auto)', pendingDraftPOsCount, 'var(--orange)', 'Needs confirmation')}
       ${kpi('📦', 'Pending GRs', pendingGRsCount, 'var(--amber)', 'Waiting for receipt')}
       ${kpi('🧾', 'Unmatched Invoices', pendingInvoices, 'var(--amber)', 'Needs 3-way match')}
       ${kpi('🏷️', 'Assets Pending Reg', pendingAssetsCount, 'var(--amber)', 'Needs asset ID')}

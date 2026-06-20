@@ -29,6 +29,7 @@ type poDoc struct {
 	BOMID          string          `bson:"bom_id"`
 	SOPID          string          `bson:"sop_id"`
 	NodeID         string          `bson:"node_id"`
+	ReferenceOrderID string        `bson:"reference_order_id,omitempty"`
 	TargetQty      float64         `bson:"target_qty"`
 	YieldRate      float64         `bson:"yield_rate"`
 	PlannedInput   float64         `bson:"planned_input"`
@@ -60,6 +61,7 @@ func poToDoc(po *models.ProductionOrder) *poDoc {
 		BOMID:          po.BOMID,
 		SOPID:          po.SOPID,
 		NodeID:         po.NodeID,
+		ReferenceOrderID: po.ReferenceOrderID,
 		TargetQty:      po.TargetQty,
 		YieldRate:      po.YieldRate,
 		PlannedInput:   po.PlannedInput,
@@ -80,6 +82,7 @@ func docToPO(d *poDoc) *models.ProductionOrder {
 		BOMID:          d.BOMID,
 		SOPID:          d.SOPID,
 		NodeID:         d.NodeID,
+		ReferenceOrderID: d.ReferenceOrderID,
 		TargetQty:      d.TargetQty,
 		YieldRate:      d.YieldRate,
 		PlannedInput:   d.PlannedInput,
@@ -283,4 +286,17 @@ func decodePOs(ctx context.Context, cur *mongo.Cursor) ([]*models.ProductionOrde
 		result = append(result, docToPO(&doc))
 	}
 	return result, cur.Err()
+}
+
+func (r *productionOrderRepository) FindByReferenceOrderIDs(ctx context.Context, orderIDs []string) ([]*models.ProductionOrder, error) {
+	if len(orderIDs) == 0 {
+		return nil, nil
+	}
+	filter := bson.M{"reference_order_id": bson.M{"$in": orderIDs}}
+	cur, err := r.pos.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("poRepository.FindByReferenceOrderIDs: %w", err)
+	}
+	defer cur.Close(ctx)
+	return decodePOs(ctx, cur)
 }

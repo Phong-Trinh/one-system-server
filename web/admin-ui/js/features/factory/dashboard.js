@@ -7,10 +7,21 @@ async function renderFacDashboard() {
 
   let pending = 0; // Pending POs
   let allPuros = [];
+  let pendingITOs = 0; // ITOs needing dispatch
   try {
-    const puros = await api.getPOsByNode(state.node);
+    const [puros, itos] = await Promise.all([
+      api.getPOsByNode(state.node).catch(() => []),
+      api.getITOs(state.node).catch(() => [])
+    ]);
     allPuros = puros || [];
     pending = allPuros.filter(p => p.status !== 'COMPLETED').length;
+    
+    // Count ITOs where Factory is the provider and it's approved
+    const activeItos = itos || [];
+    pendingITOs = activeItos.filter(ito => 
+      ito.provider_node_id === state.node && 
+      (ito.status === 'APPROVED' || ito.status === 'AUTO_APPROVED')
+    ).length;
   } catch (e) { }
 
   const incomingDeliveries = allPuros.filter(p => p.status === 'ON_WAY_DELIVERY');
@@ -23,10 +34,11 @@ async function renderFacDashboard() {
   return `
     ${pageHeader('Factory Dashboard', 'Factory — production, machines, stock')}
 
-    <div class="grid-4 gap-16">
+    <div class="grid-5 gap-16">
       ${kpi('🏭', 'In Production', inProgress, 'var(--blue)', 'Active production orders')}
+      ${kpi('🚚', 'Pending Dispatch', pendingITOs, 'var(--orange)', 'ITOs needing dispatch')}
       ${kpi('⏳', 'Active POs', pending, 'var(--amber)', 'Awaiting deliveries')}
-      ${kpi('⚙️', 'Machines Busy', busyMach, 'var(--amber)', 'of \${MACHINES.length} total')}
+      ${kpi('⚙️', 'Machines Busy', busyMach, 'var(--amber)', 'of ${MACHINES.length} total')}
       ${kpi('⚠️', 'Low Stock', lowStock, 'var(--red)', 'Items below ROP')}
     </div>
 

@@ -1554,7 +1554,8 @@ let kdsMachines = [
     { id: 'M1_BEP_NUONG', name: 'Bếp Nướng #1', capacity: 8 },
     { id: 'M2_MAY_CHIEN_1', name: 'Máy Chiên #1', capacity: 2 },
     { id: 'M3_MAY_CHIEN_2', name: 'Máy Chiên #2', capacity: 2 },
-    { id: 'M4_BAN_RAP', name: 'Bàn Ráp', capacity: 10 }
+    { id: 'M4_BAN_RAP', name: 'Bàn Ráp', capacity: 10 },
+    { id: 'M5_SO_CHE', name: 'Bàn Sơ Chế', capacity: 10 }
 ];
 let kdsPollingInterval = null;
 let poolPollingInterval = null;
@@ -1563,8 +1564,9 @@ let poolPollingInterval = null;
 // These match the SOPs defined in hamburger_peak_demo.go
 const DEMO_ORDERS = [
     { bom_id: 'BOM_HAMBURGER_BO', _label: 'Hamburger Bò', target_qty: 2, delay: 0 },
-    { bom_id: 'BOM_KHOAI_TAY_CHIEN', _label: 'Khoai Tây Chiên', target_qty: 1, delay: 0 },
-    { bom_id: 'BOM_HAMBURGER_GA', _label: 'Hamburger Gà', target_qty: 1, delay: 5000 },
+    { bom_id: 'BOM_CHEESEBURGER', _label: 'Cheeseburger', target_qty: 1, delay: 2000 },
+    { bom_id: 'BOM_KHOAI_TAY_CHIEN', _label: 'Khoai Tây Chiên', target_qty: 1, delay: 4000 },
+    { bom_id: 'BOM_HAMBURGER_GA', _label: 'Hamburger Gà', target_qty: 1, delay: 6000 },
     { bom_id: 'BOM_BIT_TET', _label: 'Bò Bít Tết', target_qty: 1, delay: 30000 }
 ];
 

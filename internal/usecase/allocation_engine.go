@@ -59,7 +59,7 @@ func (uc *allocationUseCase) SetFacade(facade *SupplyChainFacade) {
 
 
 // createBatchForStep creates a QUEUED ProductionBatch for the given SOP step.
-// Slot consumption is derived from ItemCapacityConfig for the step's equipment type.
+// Slot consumption is read directly from SOPStep.SlotConsumption (set at SOP definition time).
 // Steps with no equipment type (manual/non-machine) get slotsUsed=0.
 func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.ProductionOrder, stepID string) error {
 	step, err := uc.sopRepo.FindStepByID(ctx, stepID)
@@ -75,6 +75,7 @@ func (uc *allocationUseCase) createBatchForStep(ctx context.Context, po *models.
 	batch := &models.ProductionBatch{
 		ID:        uuid.NewString(),
 		POID:      po.ID,
+		ReferenceOrderID: po.ReferenceOrderID,
 		SOPStepID: step.ID,
 		NodeID:    po.NodeID,
 		ItemID:    po.ItemID,
@@ -248,6 +249,7 @@ func (uc *allocationUseCase) RunAllocation(ctx context.Context, nodeID string) e
 						remainder := &models.ProductionBatch{
 							ID:        uuid.NewString(),
 							POID:      b.POID,
+							ReferenceOrderID: b.ReferenceOrderID,
 							SOPStepID: b.SOPStepID,
 							NodeID:    b.NodeID,
 							ItemID:    b.ItemID,
@@ -410,8 +412,8 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		if err := uc.poRepo.UpdateStatus(ctx, po.ID, models.POCompleted, nil); err != nil {
 			fmt.Printf("failed to mark PO %s completed: %v\n", po.ID, err)
 		} else {
-			// PO Completed! Stock in the final produced item
-			if uc.facade != nil {
+			// PO Completed! Stock in the final produced item ONLY if Make-To-Stock
+			if po.ReferenceOrderID == "" && uc.facade != nil {
 				_ = uc.facade.Inventory.StockIn(ctx, po.NodeID, po.ItemID, po.TargetQty)
 			}
 		}

@@ -214,6 +214,18 @@ const api = {
             body: JSON.stringify(data || {})
         });
     },
+    async bulkConfirmBatchPlacement(batchIds) {
+        return fetchJSON(`${API_BASE}/kds/batches/bulk-start`, {
+            method: 'POST',
+            body: JSON.stringify({ batch_ids: batchIds })
+        });
+    },
+    async bulkConfirmBatchCompletion(batchIds) {
+        return fetchJSON(`${API_BASE}/kds/batches/bulk-complete`, {
+            method: 'POST',
+            body: JSON.stringify({ batch_ids: batchIds })
+        });
+    },
 
     // ── Internal Transfer Orders (ITO) ──
     async getITOs(nodeId) {
@@ -272,6 +284,12 @@ const api = {
         return fetchJSON(`${API_BASE}/inventory/init`, {
             method: 'POST',
             body: JSON.stringify({ node_id: nodeId, item_id: itemId, qty_bu: qtyBU })
+        });
+    },
+    async triggerROP(nodeId, itemId) {
+        return fetchJSON(`${API_BASE}/inventory/trigger-rop`, {
+            method: 'POST',
+            body: JSON.stringify({ node_id: nodeId, item_id: itemId })
         });
     },
 
