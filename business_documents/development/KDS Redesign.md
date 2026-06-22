@@ -198,11 +198,11 @@ A làm #03:                                                 [WAIT.][Fryer...]
 
 ---
 
-## 5. Mô hình đề xuất: Hybrid Station-Based
+## 5. Mô hình đề xuất: Dependency-Aware Hybrid
 
-> *"Station-Based execution + Order-Based accountability"*
+> *"Station-Based execution + Dependency-Graph scheduling + Order-Based accountability"*
 
-Đây là mô hình mà **McDonald's, Jollibee, Gong Cha** thực sự vận hành. Không phải thuần A cũng không phải thuần B.
+Mô hình này kế thừa nền tảng Station-Based (như McDonald's, Jollibee vận hành) nhưng **mở rộng lên một tầng trừu tượng cao hơn** để phục vụ các nhà hàng có SOP phức tạp: pizza truyền thống, premium burger, casual dining. Đây là V2 — baseline thiết kế của OneSystem KDS, không phải progressive extension.
 
 ### Nguyên tắc cốt lõi
 
@@ -340,50 +340,114 @@ StaffShift {
 
 ---
 
-### 6.3 — [SỬA] SOPStep — Bổ sung fields
+### 6.3 — [SỬA] SOPStep — V2 Spec
+
+> [!NOTE]
+> `can_fill_idle: bool` đã bị **xóa hoàn toàn**. Thay bằng `attention_level` enum để model chính xác hơn mức độ chú ý cần thiết trong idle time. `step_type` cũng đã được hợp nhất vào `attention_level` + `depends_on_steps` để tránh dư thừa.
 
 ```
 SOPStep {
-  // --- Existing fields ---
+  // --- Core fields (không đổi) ---
   sop_id              string
   seq_no              int
   equipment_type_id   string
   duration            int          Tổng thời gian của bước (giây)
-  description         string       Hướng dẫn chi tiết
+  description         string       Hướng dẫn chi tiết cho nhân viên
 
-  // --- NEW fields ---
-  is_idle_step              bool   true = sau khi set up, máy tự chạy (nhân viên rảnh)
-  active_time               int?   Thời gian nhân viên phải thao tác trực tiếp (giây)
-                                   (nếu is_idle_step = true: active_time < duration)
-  idle_time                 int?   Thời gian máy tự chạy, nhân viên rảnh (giây)
-                                   = duration - active_time
-  can_fill_idle             bool   Trong thời gian idle có được chèn task khác không?
-  requires_attention_at     int?   Nhân viên phải quay lại trước khi hết bao nhiêu giây
-                                   (= buffer trước khi idle_time kết thúc)
-  step_type         StepType       MANUAL | MACHINE_IDLE | ASSEMBLY | QC
+  // --- Idle modeling (V2 — thay thế can_fill_idle) ---
+  is_idle_step        bool         true = máy tự chạy sau khi setup, nhân viên có thể rời
+  active_time         int?         Thời gian thao tác trực tiếp (giây), nếu is_idle_step
+  idle_time           int?         = duration - active_time (tính tự động)
+  attention_level     AttentionLevel  BẮT BUỘC khi is_idle_step = true
+  check_interval_sec  int?         Chỉ dùng khi attention_level = PERIODIC_CHECK
+  max_distance_meters float?       Chỉ dùng khi attention_level = NEARBY_IDLE
+  requires_attention_at int?       Buffer giây trước khi hết idle, nhân viên phải quay lại
+
+  // --- Dependency graph (V2 core) ---
+  depends_on_steps    string[]     IDs của các SOPStep phải DONE trước bước này
+                                   [] = chỉ phụ thuộc vào seq_no (default behavior)
+  same_item_required  bool         true = không bin-pack với item/đơn khác
+                                   false = scheduler tự do batch (default)
+
+  // --- Equipment constraint (V2 core) ---
+  equipment_profile   object?      Chi tiết hơn equipment_type_id
+    temperature_celsius float?     Nhiệt độ yêu cầu (để match machine profile)
+    mode              string?      "CONVECTION" | "DECK" | "WOOD_FIRED" | "INDUCTION"
 }
 
-StepType:
-  MANUAL       → Nhân viên thao tác liên tục, không rời máy
-  MACHINE_IDLE → Set up xong, máy tự chạy, nhân viên có thể làm việc khác
-  ASSEMBLY     → Gom các phần của đơn hàng lại (bước cuối)
-  QC           → Kiểm tra chất lượng trước khi xuất
+AttentionLevel:
+  FULL_IDLE       → Máy tự chạy hoàn toàn. Nhân viên tự do đến station khác.
+  NEARBY_IDLE     → Cần ở gần máy (<= max_distance_meters), làm việc tay được.
+  PERIODIC_CHECK  → Check định kỳ (mỗi check_interval_sec giây), giữa đó tự do.
+  ACTIVE_WAIT     → Không rời máy — đứng chờ để phản ứng ngay.
+```
+
+**Mapping từ V1 sang V2 (cho QSR client hiện có):**
+
+| V1 (cũ) | V2 equivalent | Ghi chú |
+|---|---|---|
+| `can_fill_idle: true` | `attention_level: FULL_IDLE` | 1-1 |
+| `can_fill_idle: false` (nhân viên không rời) | `attention_level: ACTIVE_WAIT` | 1-1 |
+| `can_fill_idle: false` (nhân viên gần đó) | `attention_level: NEARBY_IDLE` | V2 diễn đạt đúng hơn |
+| *(không có trong V1)* | `attention_level: PERIODIC_CHECK` | V2 mới |
+
+---
+
+### 6.4 — [MỚI] OrderItem — Item-Level Tracking
+
+Trong V2, mỗi món trong đơn là một entity độc lập với SOP và timeline riêng. Đây là nền tảng cho **partial assembly** và **multi-timeline scheduling**.
+
+```
+OrderItem {
+  id              string       Unique identifier
+  po_id           string       FK → ProductionOrder
+  product_id      string       FK → Product (menu item)
+  sop_id          string       FK → SOP (quy trình làm món này)
+  quantity        float        Số lượng
+
+  status          ItemStatus   PENDING | IN_PROGRESS | READY | ASSEMBLED
+  ready_at        time?        Khi nào item này hoàn thành (thực tế)
+  estimated_ready time?        Scheduler dự đoán
+}
+
+ItemStatus:
+  PENDING      → Chưa bắt đầu
+  IN_PROGRESS  → Đang trong quá trình làm (ít nhất 1 SOPStep đang ACTIVE)
+  READY        → Tất cả SOPStep của item này đã DONE, chờ Assembly
+  ASSEMBLED    → Đã được Runner gom vào đơn hoàn chỉnh
+```
+
+**AssemblyTask V2 — Partial Notification:**
+
+```
+AssemblyTask {
+  po_id               string
+  trigger_condition   "ALL_ITEMS_READY" | "PARTIAL_NOTIFY"
+                      ALL_ITEMS_READY → Assembly chỉ trigger khi tất cả items READY
+                      PARTIAL_NOTIFY  → Runner được notify mỗi khi 1 item READY
+  ready_items         OrderItem[]     Cập nhật realtime khi item READY
+  pending_items       OrderItem[]     Còn lại, kèm estimated_ready time
+}
 ```
 
 ---
 
-### 6.4 — Sơ đồ quan hệ mới (Layer bổ sung)
+### 6.5 — Sơ đồ quan hệ mới (Layer bổ sung)
 
 ```
-Layer 3.5 — Staff Scheduling (MỚI)
+Layer 3.5 — Staff Scheduling + Item Tracking (V2)
 ┌─────────────────────────────────────────────┐
 │  StaffShift                                  │
 │  (Ca làm việc, station được assign)          │
 ├─────────────────────────────────────────────┤
+│  OrderItem                                   │
+│  (Mỗi món trong đơn, có SOP + timeline riêng)│
+│  → FK: ProductionOrder, SOP                  │
+├─────────────────────────────────────────────┤
 │  StaffTask                                   │
 │  (Atomic task: ai, làm gì, khi nào, máy nào)│
-│  → FK: ProductionOrder, SOPStep, Staff,      │
-│        Machine, StaffTask (parent)           │
+│  → FK: ProductionOrder, OrderItem, SOPStep,  │
+│        Staff, Machine, StaffTask (parent)    │
 └─────────────────────────────────────────────┘
 ```
 
@@ -391,29 +455,46 @@ Layer 3.5 — Staff Scheduling (MỚI)
 
 ## 7. Flow vận hành hoàn chỉnh
 
-### 7.1 — Từ Production Order đến StaffTask
+### 7.1 — Từ Production Order đến StaffTask (V2 Scheduler)
 
 ```
 [ProductionOrder → IN_PROGRESS]
         │
         ▼
-[Scheduling Engine kích hoạt]
+[Scheduling Engine V2 kích hoạt]
   │
-  ├── Với mỗi SOPStep trong SOP:
-  │   ├── Xác định equipment_type_id cần thiết
-  │   ├── Tìm Machine cụ thể còn IDLE hoặc sắp IDLE
-  │   ├── Tìm Staff đang trong StaffShift với station = equipment_type
-  │   ├── Tính scheduled_start dựa trên dependency và machine availability
+  ├── PHASE 1: Build Dependency DAG
+  │   ├── Với mỗi OrderItem trong PO:
+  │   │   └── Parse SOPStep[] → build directed acyclic graph
+  │   │       (edge: step A → step B nếu B.depends_on_steps chứa A.id)
+  │   └── Topological sort → danh sách steps theo thứ tự an toàn
+  │
+  ├── PHASE 2: Schedule từng Step (theo topo order)
+  │   ├── Check: tất cả depends_on_steps đã DONE chưa?
+  │   │   → Nếu chưa: step này BLOCKED, bỏ qua đến khi dependency clear
+  │   ├── Tìm Machine: equipment_type_id + equipment_profile compatible
+  │   │   → Nếu same_item_required = true: không merge batch với OrderItem khác
+  │   ├── Tìm Staff: StaffShift.station = equipment_type, đang available
+  │   ├── Tính scheduled_start: max(dependency_done_at, machine_free_at, staff_free_at)
   │   └── Tạo StaffTask với status = PENDING
   │
-  ├── Xử lý idle steps (is_idle_step = true):
-  │   ├── Tạo 2 tasks: "SET_UP" (MANUAL) + "RETRIEVE" (MANUAL)
-  │   └── Nếu can_fill_idle = true:
-  │       └── Tìm PENDING task khác trong queue đủ ngắn để chèn vào
-  │           (constraint: fill_task.duration ≤ idle_time - requires_attention_at - buffer)
-  │           Nếu đủ → tạo fill task với parent_task_id = idle_task.id
+  ├── PHASE 3: Idle Time Fill-In (attention-aware)
+  │   ├── Với mỗi step có is_idle_step = true:
+  │   │   ├── Tạo 2 tasks: "SET_UP" + "RETRIEVE" (cả 2 là MANUAL)
+  │   │   └── Dựa vào attention_level:
+  │   │       FULL_IDLE      → Tìm fill-in task ở bất kỳ station nào
+  │   │       NEARBY_IDLE    → Chỉ fill-in task không cần di chuyển xa (max_distance)
+  │   │       PERIODIC_CHECK → Fill-in task ngắn hơn check_interval_sec
+  │   │                        Task phải có is_interruptible = true
+  │   │       ACTIVE_WAIT    → Không fill-in. Log idle time cho analytics
+  │   └── Constraint: fill_task.estimated_duration ≤ idle_time - requires_attention_at - buffer
   │
-  └── Output: Danh sách StaffTask có thứ tự cho từng nhân viên
+  ├── PHASE 4: Assembly Scheduling
+  │   ├── Tạo AssemblyTask với trigger_condition từ PO config
+  │   ├── PARTIAL_NOTIFY: subscribe vào mỗi OrderItem.status → READY event
+  │   └── ALL_ITEMS_READY: trigger khi tất cả OrderItem.status = READY
+  │
+  └── Output: Ordered StaffTask list per staff + AssemblyTask
 ```
 
 ### 7.2 — Màn hình Staff KDS (nhân viên bếp)
@@ -635,16 +716,18 @@ Ví dụ: Bước 1 → Fryer (blanching), Bước 4 → Fryer (fry final). Hai 
 
 ---
 
-## Tóm tắt quyết định kiến trúc
+## Tóm tắt quyết định kiến trúc (V2 Baseline)
 
 | Quyết định | Lựa chọn | Lý do |
 |---|---|---|
-| Task assignment model | **Hybrid Station-Based** | Throughput tối đa + Accountability qua reference |
+| Task assignment model | **Dependency-Aware Hybrid** | Station-based throughput + dependency graph cho SOP phức tạp |
+| Scheduling core | **Constraint-based scheduler (DAG)** | Topological sort → đảm bảo đúng thứ tự cho mọi loại SOP |
 | Đơn vị hiển thị KDS | **StaffTask (per person)** | Nhân viên nhìn thấy việc của mình, không phải của máy |
-| Machine scheduling | **Scheduler Engine (auto)** | Loại bỏ quyết định của nhân viên |
-| Idle time | **Managed fill-in** | Tối đa hóa thời gian hiệu quả, không để nhân viên tự chọn |
-| Quality gate | **Assembly Step (explicit)** | 1 người chịu trách nhiệm đơn hoàn chỉnh |
-| Accountability | **Order reference trên mọi task** | Truy vết lỗi nhanh mà không hi sinh throughput |
+| Idle time modeling | **AttentionLevel enum (4 mức)** | Granular hơn boolean — phân biệt được FULL_IDLE vs PERIODIC_CHECK |
+| Item tracking | **OrderItem (item-level)** | Hỗ trợ partial assembly, multi-timeline trong 1 đơn |
+| Assembly trigger | **Configurable: ALL_ITEMS hoặc PARTIAL_NOTIFY** | Linh hoạt cho cả QSR (all) lẫn casual dining (partial) |
+| Batch constraint | **equipment_profile + same_item_required** | Không batch những gì không tương thích (nhiệt độ, item riêng) |
+| Accountability | **Order reference + item reference trên mọi task** | Truy vết lỗi đến cấp item, không chỉ cấp đơn |
 
 > [!IMPORTANT]
 > **Sự thay đổi tư duy cốt lõi:**
