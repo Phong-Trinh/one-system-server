@@ -6,6 +6,36 @@
 
 ---
 
+## Triết lý thiết kế
+
+> **OneSystem KDS là một Staff Support System — không phải Staff Command System.**
+
+Hệ thống này được sinh ra để **hỗ trợ con người**, giúp họ đạt đến trạng thái năng lực tốt nhất — không phải để kiểm soát hay ra lệnh cho họ.
+
+### Nguyên tắc nền tảng
+
+| Nguyên tắc | Biểu hiện trong thiết kế |
+|---|---|
+| **Con người trước, throughput sau** | UX không tạo áp lực, không tạo cảm giác bị giám sát |
+| **Ngăn sai sót trước khi xảy ra** | Early warning thay vì post-hoc truy vết lỗi |
+| **Hệ thống phục vụ người** | Hướng dẫn rõ ràng từng bước, ngôn ngữ trợ lý — không phải ngôn ngữ lệnh |
+| **Nhân viên không sợ làm sai** | Lỗi được hệ thống phát hiện sớm và xử lý nhẹ nhàng — không phải để ghi vào hồ sơ |
+| **Accountability là công cụ cải thiện, không phải trừng phạt** | Dữ liệu truy vết dùng để cải thiện SOP và đào tạo — không hiển thị với nhân viên theo cách tạo áp lực |
+
+### Hệ quả thiết kế
+
+Triết lý này ảnh hưởng trực tiếp đến từng quyết định nhỏ trong hệ thống:
+
+- **Ngôn ngữ hiển thị:** *"Sắp đến lúc lấy khoai ra — còn 2 phút"* thay vì *"TASK DUE — hoàn thành ngay"*
+- **Cảnh báo:** Nhắc nhở chủ động **trước khi** deadline đến, không phải báo lỗi **sau khi** trễ
+- **Phân công task:** Hệ thống gợi ý bước tiếp theo — nhân viên confirm, không phải nhân viên báo cáo với máy
+- **Analytics:** Dữ liệu hiệu suất chỉ dành cho manager và product team để cải thiện hệ thống — không hiển thị với nhân viên theo cách tạo áp lực
+
+> *Khi nhân viên thoải mái, không sợ sai → họ tập trung vào chất lượng → throughput thực tế cao hơn.*  
+> *Đây là con đường bền vững hơn so với kiểm soát tuyệt đối.*
+
+---
+
 ## Mục lục
 
 1. [Tóm tắt điều hành](#1-tóm-tắt-điều-hành)
@@ -17,17 +47,18 @@
 7. [Flow vận hành hoàn chỉnh](#7-flow-vận-hành-hoàn-chỉnh)
 8. [Thách thức kỹ thuật cần giải quyết](#8-thách-thức-kỹ-thuật-cần-giải-quyết)
 9. [Lộ trình thực hiện](#9-lộ-trình-thực-hiện)
+10. [Tóm tắt quyết định kiến trúc](#10-tóm-tắt-quyết-định-kiến-trúc)
 
 ---
 
 ## 1. Tóm tắt điều hành
 
-KDS hiện tại của OneSystem về bản chất là một **machine monitor** — nó hiển thị trạng thái máy móc cho người quản lý, không phải hướng dẫn thao tác cho nhân viên bếp. Đây là khoảng cách nghiêm trọng giữa sản phẩm hiện có và vision ban đầu: *"hướng dẫn nhân viên bếp chi tiết từng bước, để họ như robot — chỉ nghe lệnh hệ thống và làm theo."*
+KDS hiện tại của OneSystem về bản chất là một **machine monitor** — nó hiển thị trạng thái máy móc cho người quản lý, không phải hướng dẫn thao tác cho nhân viên bếp. Đây là khoảng cách nghiêm trọng giữa sản phẩm hiện có và vision thực sự: *một hệ thống hỗ trợ nhân viên bếp hoàn thành công việc chính xác, hiệu quả, và không phải lo sợ sai sót.*
 
 Tài liệu này phân tích nguyên nhân, đánh giá hai mô hình giao task khác nhau, và đề xuất kiến trúc mới dựa trên mô hình **Hybrid Station-Based** — cách McDonald's, Jollibee, và Gong Cha thực sự vận hành bếp của họ.
 
 > [!IMPORTANT]
-> **Kết luận cốt lõi:** KDS cần được thiết kế lại từ *"machine-centric monitoring"* sang *"staff-centric command system"*. Đơn vị hiển thị không còn là Batch (theo Máy) mà là StaffTask (theo Người).
+> **Kết luận cốt lõi:** KDS cần được thiết kế lại từ *"machine-centric monitoring"* sang *"staff-centric support system"*. Đơn vị hiển thị không còn là Batch (theo Máy) mà là StaffTask (theo Người).
 
 ---
 
@@ -61,7 +92,8 @@ Nói thẳng hơn: KDS hiện tại đang giải quyết sai vấn đề. Nó tr
 | **Hành động** | Start / Complete batch | Chỉ 1 nút: **DONE ✓** |
 | **Task scheduling** | Không có | Phân công theo từng người, từng step |
 | **Idle time** | Bị bỏ qua | Chèn task phụ có kiểm soát |
-| **Accountability** | Không ai chịu trách nhiệm | Mỗi step gắn với 1 người cụ thể |
+| **Tracing** | Không có dữ liệu | Mỗi step có log đầy đủ để cải thiện SOP |
+| **Early warning** | Không có | Cảnh báo trước khi sai sót xảy ra |
 
 ### Vấn đề thực tế trong bếp
 
@@ -308,16 +340,50 @@ StaffTask {
 
   is_interruptible    bool         false = không được chèn task khác vào giữa bước này
   parent_task_id      string?      FK → StaffTask (nếu là fill-in task trong idle time)
-  
-  note                string?      Ghi chú từ nhân viên khi done/fail
+
+  // Structured notes thay cho string tự do
+  completion_note     TaskNote?    Ghi chú khi DONE với deviation
+  cancel_note         TaskNote?    Ghi chú khi CANCELLED
+  failure_note        TaskNote?    Ghi chú khi FAILED
+}
+
+TaskNote {
+  type      NoteType   DEVIATION | QUALITY_ISSUE | EQUIPMENT_ISSUE | OTHER
+  severity  Severity   LOW | MEDIUM | HIGH
+  message   string?
 }
 
 TaskStatus:
-  PENDING   → Đã scheduled, chưa đến lượt
-  ACTIVE    → Nhân viên đang thực hiện (bấm "Bắt đầu")
-  WAITING   → Bước idle (máy đang tự chạy, timer đếm ngược)
-  DONE      → Hoàn thành, nhân viên đã confirm
-  FAILED    → Báo lỗi (hỏng nguyên liệu, máy hỏng, v.v.)
+  PENDING    → Đã scheduled, chưa đến lượt
+  ACTIVE     → Nhân viên đang thực hiện
+  WAITING    → Bước idle (máy đang tự chạy, timer đếm ngược)
+  DONE       → Hoàn thành, nhân viên đã confirm
+  CANCELLED  → Task bị hủy TRƯỚC KHI bắt đầu (PENDING → CANCELLED)
+               Nguyên nhân: máy hỏng, thiếu nguyên liệu, đơn bị hủy
+               Effect: Tự động hoàn trả reserved inventory về kho
+  FAILED     → Task thất bại SAU KHI đã bắt đầu (ACTIVE/WAITING → FAILED)
+               Effect: Không hoàn trả — nguyên liệu đã tiêu thụ một phần
+
+CancelReason:   // Chỉ dùng khi CANCELLED
+  MACHINE_UNAVAILABLE   → Máy hỏng/bảo trì trước khi task start
+  MATERIAL_UNAVAILABLE  → Thiếu nguyên liệu khi đến lượt
+  ORDER_CANCELLED       → Đơn hàng bị hủy
+  OTHER
+
+FailedReason:   // Chỉ dùng khi FAILED
+  QUALITY_ISSUE         → Sản phẩm không đạt chất lượng
+  EQUIPMENT_MALFUNCTION → Máy hỏng giữa chừng
+  OTHER
+```
+
+**Inventory Return khi CANCELLED:**
+```
+Task PENDING → CANCELLED (vì MACHINE_UNAVAILABLE / MATERIAL_UNAVAILABLE)
+      │
+      ▼
+Với mỗi BOM item được reserved cho task này:
+  └── Tạo InventoryReturn: quantity = reserved_quantity, reason = cancel_reason
+      (Auto-approved — không cần manager confirm thủ công)
 ```
 
 ---
@@ -336,6 +402,43 @@ StaffShift {
   status        ShiftStatus  SCHEDULED | ACTIVE | ENDED
   station_id    string?      FK → EquipmentType (station được assign trong ca này)
 }
+```
+
+---
+
+### 6.6 — [MỚI] ShiftHandover
+Protocol bàn giao ca — đảm bảo nhân viên ca sau biết context từ ca trước.
+
+```
+ShiftHandover {
+  id                string         Unique identifier
+  from_shift_id     string         FK → StaffShift (ca cũ)
+  to_shift_id       string         FK → StaffShift (ca mới)
+  handover_time     time
+  in_progress_tasks StaffTask[]    Tasks đang ACTIVE hoặc WAITING tại thời điểm bàn giao
+  machines_in_use   Machine[]      Máy đang chạy, kèm remaining_time
+  pending_notes     string?        Ghi chú tự do từ nhân viên ca cũ
+  acknowledged_at   time?          Ca mới bấm confirm đã nhận
+}
+```
+
+**Staff KDS — Handover Screen (hiển thị khi ca mới bắt đầu):**
+```
+┌──────────────────────────────────────────┐
+│  📋  TIẾP NHẬN CA                        │
+│  ─────────────────────────────────────── │
+│  Ca sáng để lại:                         │
+│                                          │
+│  🔄 FRYER_01 đang chạy — còn 3:20        │
+│     PO#17 · Chiên khoai 5kg              │
+│                                          │
+│  📝 Ghi chú: "Gà đang ướp trong tủ lạnh  │
+│     ngăn dưới, lấy ra lúc 14:30"         │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │    ✓  Tôi đã kiểm tra và tiếp nhận │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
 ```
 
 ---
@@ -478,6 +581,13 @@ Layer 3.5 — Staff Scheduling + Item Tracking (V2)
   │   ├── Tính scheduled_start: max(dependency_done_at, machine_free_at, staff_free_at)
   │   └── Tạo StaffTask với status = PENDING
   │
+  ├── PHASE 2.5: Workload Balance Check
+  │   ├── Tính total_scheduled_duration cho candidate staff trong ca hiện tại
+  │   ├── So sánh với avg của tất cả staff cùng station
+  │   └── Nếu candidate_load > avg * 1.3:
+  │       └── Prefer staff khác nếu available và chênh lệch load < 20%
+  │           (Soft constraint — không override nếu không có lựa chọn tốt hơn)
+  │
   ├── PHASE 3: Idle Time Fill-In (attention-aware)
   │   ├── Với mỗi step có is_idle_step = true:
   │   │   ├── Tạo 2 tasks: "SET_UP" + "RETRIEVE" (cả 2 là MANUAL)
@@ -543,11 +653,32 @@ Mỗi nhân viên chỉ nhìn thấy **1 task tại 1 thời điểm**. Không c
 └──────────────────────────────────────────┘
 ```
 
-**State 3: Alert — nhân viên phải quay lại**
+**State 3a: Nhắc sớm (T-2:00)**
 ```
 ┌──────────────────────────────────────────┐
-│  🔴  QUAY LẠI FRYER NGAY!               │
-│  ⚠️  Còn 30 giây                         │
+│  🟡  TRONG KHI CHỜ                       │
+│  ⏳ Fryer đang chạy  •  còn 2:00         │
+│  ──────────────── sắp đến lúc ────────── │
+│  Chuẩn bị: Lấy khoai ra khỏi FRYER_01   │
+│  (Hoàn thành task hiện tại trước)        │
+└──────────────────────────────────────────┘
+```
+
+**State 3b: Chuẩn bị (T-0:45)**
+```
+┌──────────────────────────────────────────┐
+│  🟠  CHUẨN BỊ QUAY LẠI FRYER            │
+│  ⏳ Còn 45 giây                          │
+│  ─────────────────────────────────────── │
+│  Kết thúc việc hiện tại và di chuyển     │
+│  về Fryer Station                        │
+└──────────────────────────────────────────┘
+```
+
+**State 3c: Hành động (T-0:00)**
+```
+┌──────────────────────────────────────────┐
+│  🔴  ĐẾN FRYER — Lấy khoai ra           │
 │  ─────────────────────────────────────── │
 │  Lấy khoai ra khỏi M_FRYER_01           │
 │                                          │
@@ -608,8 +739,8 @@ Màn hình này **không có nút thao tác** — chỉ để theo dõi tổng q
 fill_task.estimated_duration + safety_buffer ≤ parent_idle_task.requires_attention_at
 ```
 
-- Nếu không có task phụ nào đủ ngắn → nhân viên được "standby" (nghỉ) trong idle time
-- Không bao giờ để nhân viên tự quyết định làm gì
+- Nếu không có task phụ nào đủ ngắn → nhân viên được "standby" (nghỉ ngắn) trong idle time
+- Khi không có fill-in task phù hợp, hệ thống đề xuất nhân viên nghỉ ngơi ngắn hoặc kiểm tra station — không để idle time trở nên mơ hồ và nhân viên phải tự đoán việc cần làm
 
 ### 8.2 — Machine conflict khi nhiều PO cùng cần 1 máy
 
@@ -638,15 +769,19 @@ Notify Manager → Manual reassign
 ```
 Machine.status → UNDER_MAINTENANCE
       │
-      ▼
-StaffTask đang ACTIVE/WAITING trên máy đó → FAILED
-ProductionBatch liên quan → FAILED
+      ├── Với StaffTask đang ACTIVE / WAITING (đã bắt đầu):
+      │   └── status → FAILED (reason: EQUIPMENT_MALFUNCTION)
+      │       Nguyên liệu đã tiêu thụ → KHÔNG hoàn trả
+      │
+      └── Với StaffTask đang PENDING (chưa bắt đầu):
+          └── status → CANCELLED (reason: MACHINE_UNAVAILABLE)
+              Nguyên liệu chưa dùng → Tự động hoàn trả về kho
       │
       ▼
 Scheduler tìm Machine backup cùng equipment_type còn IDLE
       │
       ▼ Nếu có backup:
-Tạo StaffTask mới → re-route
+Tạo StaffTask mới → re-route (chỉ cho FAILED tasks — task CANCELLED đã hoàn trả rồi)
       │
       ▼ Nếu không có backup:
 PO trở về PENDING, Notify Manager
@@ -732,9 +867,11 @@ Ví dụ: Bước 1 → Fryer (blanching), Bước 4 → Fryer (fry final). Hai 
 > [!IMPORTANT]
 > **Sự thay đổi tư duy cốt lõi:**
 > - **From:** *"Batch nào đang ở máy nào"* → System monitors machines
-> - **To:** *"Nhân viên A phải làm gì trong 30 giây tới"* → System commands humans
+> - **To:** *"Nhân viên A cần được nhắc gì trong 30 giây tới"* → System supports humans
 >
 > Đây là sự khác biệt giữa một ERP simulation và một Real Operational Tool.
+> Và xa hơn nữa — đây là sự khác biệt giữa một **command system** và một **support system**.
+> Hệ thống không kiểm soát con người. Hệ thống giúp con người không mắc sai lầm.
 
 ---
 
