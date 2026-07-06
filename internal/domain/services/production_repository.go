@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"one-system-server/internal/domain/models"
 )
@@ -82,4 +83,62 @@ type ProductionBatchRepository interface {
 	UpdateStatus(ctx context.Context, id string, status models.BatchStatus) error
 	Update(ctx context.Context, batch *models.ProductionBatch) error
 	Delete(ctx context.Context, id string) error
+}
+
+// ── StaffShift ────────────────────────────────────────────────────────
+
+// StaffShiftRepository defines persistence operations for StaffShift.
+// Đây là nguồn sự thật để SchedulingEngine biết:
+//   - Ai đang có mặt trong ca (status = ACTIVE)
+//   - Mỗi người đứng station nào (station_id → EquipmentType)
+//   - Thời gian scheduling horizon (shift_start → shift_end)
+type StaffShiftRepository interface {
+	Create(ctx context.Context, s *models.StaffShift) error
+	FindByID(ctx context.Context, id string) (*models.StaffShift, error)
+
+	// FindActiveByNode trả về tất cả ca đang ACTIVE tại một node.
+	// SchedulingEngine dùng để lấy danh sách staff available và station của họ.
+	FindActiveByNode(ctx context.Context, nodeID string) ([]*models.StaffShift, error)
+
+	// FindByStaff trả về lịch sử ca của một staff (dùng để kiểm tra có active shift không).
+	FindByStaff(ctx context.Context, staffID string) ([]*models.StaffShift, error)
+
+	// UpdateStatus cập nhật trạng thái ca và actual_end nếu cần.
+	// Dùng khi nhân viên kết thúc ca (chuẩn hoặc sớm).
+	UpdateStatus(ctx context.Context, id string, status models.ShiftStatus, actualEnd *time.Time) error
+}
+
+// ── StaffTask ───────────────────────────────────────────────────────
+
+// StaffTaskRepository defines persistence operations for StaffTask.
+// SchedulingEngine viết vào đây khi tạo plan; StaffTaskUseCase cập nhật
+// khi nhân viên thực hiện (Start / Done).
+type StaffTaskRepository interface {
+	Create(ctx context.Context, t *models.StaffTask) error
+	FindByID(ctx context.Context, id string) (*models.StaffTask, error)
+
+	// FindByPO trả về tất cả tasks được tạo ra cho một PO cụ thể.
+	// Dùng để check PO completion (tất cả tasks DONE chưa?).
+	FindByPO(ctx context.Context, poID string) ([]*models.StaffTask, error)
+
+	// FindByStaff trả về tasks của một staff, filter theo status.
+	// SchedulingEngine dùng để tính staff_free_at (thời điểm task cuối cùng kết thúc).
+	// nil statuses = tất cả status.
+	FindByStaff(ctx context.Context, staffID string, statuses []models.TaskStatus) ([]*models.StaffTask, error)
+
+	// FindByNode trả về tasks tại một node, filter theo status.
+	// Dùng cho Manager overview và fill-in task lookup.
+	FindByNode(ctx context.Context, nodeID string, statuses []models.TaskStatus) ([]*models.StaffTask, error)
+
+	// FindActiveByStaff trả về task hiện tại đang ACTIVE hoặc WAITING của staff.
+	// Staff KDS dùng để hiển thị task cần làm ngay.
+	// Trả về nil nếu không có task nào đang active.
+	FindActiveByStaff(ctx context.Context, staffID string) (*models.StaffTask, error)
+
+	// FindWaitingByStaff trả về các tasks đang WAITING của staff (idle step đang chạy).
+	// SchedulingEngine dùng để tìm parent task có idle window có thể chèn fill-in task.
+	FindWaitingByStaff(ctx context.Context, staffID string) ([]*models.StaffTask, error)
+
+	// Update ghi lại toàn bộ task (dùng khi cập nhật status, timestamps).
+	Update(ctx context.Context, t *models.StaffTask) error
 }

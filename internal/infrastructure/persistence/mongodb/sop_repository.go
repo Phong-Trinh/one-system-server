@@ -27,21 +27,28 @@ type sopDoc struct {
 }
 
 type sopStepDoc struct {
-	ID                   string   `bson:"_id"`
-	SOPID                string   `bson:"sop_id"`
-	SeqNo                int      `bson:"seq_no"`
-	DependsOn            []string `bson:"depends_on"`
+	ID                   string              `bson:"_id"`
+	SOPID                string              `bson:"sop_id"`
+	SeqNo                int                 `bson:"seq_no"`
+	DependsOn            []string            `bson:"depends_on"`
 	// EquipmentTypeID links this step to an EquipmentType (e.g., "ST_MAY_CHIEN").
 	// Nil for manual/non-machine steps.
-	EquipmentTypeID      *string  `bson:"equipment_type_id,omitempty"`
-	IngredientBOMLineIDs []string `bson:"ingredient_bom_line_ids"`
-	Duration             int      `bson:"duration"`
-	Description          string   `bson:"description"`
+	EquipmentTypeID      *string             `bson:"equipment_type_id,omitempty"`
+	IngredientBOMLineIDs []string            `bson:"ingredient_bom_line_ids"`
+	Duration             int                 `bson:"duration"`
+	Description          string              `bson:"description"`
 	// SlotConsumption and AllowMix are the bin-packing inputs for this step.
 	// They are defined at SOP authoring time and stored directly on the step,
 	// not in a separate ItemCapacityConfig collection.
-	SlotConsumption      float64  `bson:"slot_consumption"` // capacity units consumed per 1 batch unit
-	AllowMix             bool     `bson:"allow_mix"`        // false = this step requires exclusive machine use
+	SlotConsumption      float64             `bson:"slot_consumption"` // capacity units consumed per 1 batch unit
+	AllowMix             bool                `bson:"allow_mix"`        // false = this step requires exclusive machine use
+
+	// V2: Idle Time Modeling — added for SchedulingEngine + fill-in task logic
+	IsIdleStep          bool                       `bson:"is_idle_step"`
+	ActiveTime          *int                       `bson:"active_time,omitempty"`
+	AttentionLevel      models.AttentionLevel      `bson:"attention_level,omitempty"`
+	CheckIntervalSec    *int                       `bson:"check_interval_sec,omitempty"`
+	RequiresAttentionAt *int                       `bson:"requires_attention_at,omitempty"`
 }
 
 func sopToDoc(s *models.SOP) *sopDoc {
@@ -64,6 +71,12 @@ func sopStepToDoc(s *models.SOPStep) *sopStepDoc {
 		Description:          s.Description,
 		SlotConsumption:      s.SlotConsumption,
 		AllowMix:             s.AllowMix,
+		// V2 idle fields
+		IsIdleStep:          s.IsIdleStep,
+		ActiveTime:          s.ActiveTime,
+		AttentionLevel:      s.AttentionLevel,
+		CheckIntervalSec:    s.CheckIntervalSec,
+		RequiresAttentionAt: s.RequiresAttentionAt,
 	}
 }
 
@@ -79,6 +92,12 @@ func docToSOPStep(d *sopStepDoc) *models.SOPStep {
 		Description:          d.Description,
 		SlotConsumption:      d.SlotConsumption,
 		AllowMix:             d.AllowMix,
+		// V2 idle fields
+		IsIdleStep:          d.IsIdleStep,
+		ActiveTime:          d.ActiveTime,
+		AttentionLevel:      d.AttentionLevel,
+		CheckIntervalSec:    d.CheckIntervalSec,
+		RequiresAttentionAt: d.RequiresAttentionAt,
 	}
 }
 

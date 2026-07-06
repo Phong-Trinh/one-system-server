@@ -5,6 +5,31 @@ import (
 	"time"
 )
 
+// ─── SOPStep V2 — Idle Time Modeling ─────────────────────────────────────────
+
+// AttentionLevel mô tả mức độ chú ý mà nhân viên cần duy trì
+// trong thời gian idle của một bước (is_idle_step = true).
+// Scheduler dùng field này để quyết định fill-in task nào có thể chèn vào idle window.
+type AttentionLevel string
+
+const (
+	// AttentionFullIdle — máy tự chạy hoàn toàn. Nhân viên tự do đến station khác.
+	// → Fill-in: bất kỳ task nào fit trong idle window.
+	AttentionFullIdle AttentionLevel = "FULL_IDLE"
+
+	// AttentionNearbyIdle — nhân viên cần ở gần máy (<=max_distance_meters).
+	// → Fill-in: chỉ task cùng station hoặc không cần di chuyển xa.
+	AttentionNearbyIdle AttentionLevel = "NEARBY_IDLE"
+
+	// AttentionPeriodicCheck — nhân viên cần check định kỳ mỗi check_interval_sec giây.
+	// → Fill-in: task có duration < check_interval_sec, phải có is_interruptible=true.
+	AttentionPeriodicCheck AttentionLevel = "PERIODIC_CHECK"
+
+	// AttentionActiveWait — nhân viên không được rời máy, phải đứng chờ.
+	// → Không fill-in. Log idle_duration cho analytics.
+	AttentionActiveWait AttentionLevel = "ACTIVE_WAIT"
+)
+
 // ─── BOM (Bill of Materials) ──────────────────────────────────────────────────
 
 // BOM defines what components are needed to produce one unit of an output item.
@@ -56,6 +81,29 @@ type SOPStep struct {
 	// allow_mix: if false, the machine must be dedicated to this item type for the entire cycle.
 	SlotConsumption float64 `json:"slot_consumption"` // capacity units consumed per 1 batch unit
 	AllowMix        bool    `json:"allow_mix"`        // false = exclusive machine use required
+
+	// ── V2: Idle Time Modeling ───────────────────────────────────────────────
+	// IsIdleStep = true khi máy tự chạy sau khi setup, nhân viên có thể rời trong một khoảng thời gian.
+	// Khi true, scheduler sẽ tách bước này thành SETUP + WAITING + RETRIEVE sub-tasks.
+	IsIdleStep bool `json:"is_idle_step"`
+
+	// ActiveTime là số giây nhân viên cần thao tác trực tiếp để setup máy.
+	// Chỉ có nghĩa khi IsIdleStep = true.
+	// idle_window = Duration - ActiveTime - RequiresAttentionAt
+	ActiveTime *int `json:"active_time,omitempty"`
+
+	// AttentionLevel xác định mức độ chú ý cần thiết trong idle window.
+	// BẮT BUỘC khi IsIdleStep = true. Scheduler dùng để lọc fill-in tasks phù hợp.
+	AttentionLevel AttentionLevel `json:"attention_level,omitempty"`
+
+	// CheckIntervalSec chỉ dùng khi AttentionLevel = PERIODIC_CHECK.
+	// Fill-in task phải có duration < CheckIntervalSec - safety_buffer.
+	CheckIntervalSec *int `json:"check_interval_sec,omitempty"`
+
+	// RequiresAttentionAt là số giây TRƯỚC KHI bước kết thúc mà nhân viên phải quay lại.
+	// Scheduler dùng để tính: idle_end = scheduled_end - RequiresAttentionAt
+	// Alert sequence: T-2:00, T-0:45, T-0:00 tính từ scheduled_end - RequiresAttentionAt.
+	RequiresAttentionAt *int `json:"requires_attention_at,omitempty"`
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────
