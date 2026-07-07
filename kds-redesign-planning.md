@@ -188,12 +188,15 @@ Indexes: `po_id`, compound `(assigned_to, status)`, compound `(node_id, status)`
 
 ---
 
-## Block C — Scheduling Engine ← CORE
+## Block C — Scheduling Engine ← CORE ✅ APPROVED
 
 **File chạm:** `internal/usecase/`
 
 > [!IMPORTANT]
 > Đây là trái tim của toàn bộ feature. Phần còn lại (UI, tests) phụ thuộc vào đây.
+
+> [!NOTE]
+> **Kế hoạch chi tiết đã được phê duyệt:** Xem [`C3 Scheduling Engine Plan.md`](file:///c:/Users/ADMIN/Documents/OneSystem/one-system-server/business_documents/plan/C3%20Scheduling%20Engine%20Plan.md) — bao gồm kiến trúc đầy đủ, 4 design decisions (D1–D4), và 23 test cases với expected results.
 
 ### C.1 — `StaffShiftUseCase` (minimal)
 
@@ -226,11 +229,20 @@ type StaffTaskUseCase interface {
 }
 ```
 
-### C.3 — `SchedulingEngine` ← **Trọng điểm**
+### C.3 — `SchedulingEngine` ← **Trọng điểm** ✅ APPROVED
 
 **File mới:** `internal/usecase/scheduling_engine.go`
 
 Engine nhận 1 PO, trả về danh sách `StaffTask` đã được assign và schedule.
+
+**4 Design Decisions đã được phê duyệt:**
+
+| # | Quyết định | Giải pháp |
+|---|---|---|
+| **D1** | SOPStepID cho SETUP/RETRIEVE | Thêm `TaskKind` field (NORMAL/SETUP/RETRIEVE/FILL_IN) vào `StaffTask` model |
+| **D2** | Machine `free_at` estimation | Load `ProductionBatch.ScheduledEnd` qua `machine.CurrentBatchID`; inject `batchRepo` |
+| **D3** | Idempotency | Skip steps có task PENDING/ACTIVE/WAITING/DONE; chỉ re-schedule steps có task CANCELLED hoặc chưa có task |
+| **D4** | Fill-in candidate duration | Load SOPStep của từng candidate để lấy `step.Duration`; batch load rồi filter |
 
 #### Interface
 
@@ -243,19 +255,26 @@ type SchedulingEngine interface {
     // RescheduleOnShiftChange: khi có staff mới vào ca hoặc staff rời ca
     RescheduleOnShiftChange(ctx context.Context, nodeID string) error
 }
+
+func NewSchedulingEngine(
+    poRepo      services.ProductionOrderRepository,
+    sopRepo     services.SOPRepository,
+    machineRepo services.MachineRepository,
+    batchRepo   services.ProductionBatchRepository, // D2: tính machine free_at
+    shiftRepo   services.StaffShiftRepository,
+    taskRepo    services.StaffTaskRepository,
+) SchedulingEngine
 ```
 
-#### Thuật toán — Phase 1: Build Dependency DAG
+#### Thuật toán — Phase 1: Build Dependency DAG (Kahn's)
 
 ```
 Input: PO.SOPID → SOPStep[]
 
-1. Load tất cả SOPStep của SOP
-2. Build directed graph: step A → step B nếu B.DependsOn chứa A.ID
-3. Topological sort (Kahn's algorithm):
-   - Start với steps không có dependency (DependsOn = [])
-   - Lần lượt unlock steps khi tất cả dependency đã schedule
-4. Output: []SOPStep theo thứ tự an toàn (parallelizable groups)
+1. Build inDegree map + adjacency graph từ step.DependsOn
+2. Queue = steps có inDegree == 0 (root nodes)
+3. BFS → output: [][]SOPStep (mỗi group là các steps có thể chạy song song)
+4. Validate: tổng steps đã xử lý == len(steps), nếu không → ErrCyclicDependency
 ```
 
 #### Thuật toán — Phase 2: Assign Machine + Staff + Time
@@ -263,28 +282,22 @@ Input: PO.SOPID → SOPStep[]
 ```
 Với mỗi step trong topo order:
 
-2.1. Tìm Machine:
-   - FindIdleByStationType(nodeID, step.EquipmentTypeID)
-   - Nếu is_idle_step = false: cần machine hoàn toàn free
-   - Tính machine_free_at: max(machine.currentBatch.EstimatedCompletion)
-   - Nếu không có machine available: task.Status = PENDING (chờ)
+2.1. pickMachine(nodeID, step):
+   - nil EquipmentTypeID → manual step, machineID = "", freeAt = now()
+   - FindIdleByStationType → pick first IDLE machine
+   - Không có IDLE → load batch từ CurrentBatchID → freeAt = batch.ScheduledEnd
+   - Non-fatal nếu không có machine → log + machineID = ""
 
-2.2. Tìm Staff:
-   - ListActiveShifts(nodeID) → filter by shift.StationID == step.EquipmentTypeID
-   - Tính staff_free_at mỗi người: thời điểm task cuối cùng của họ kết thúc
-   - Pick staff có staff_free_at sớm nhất (FIFO đơn giản)
-   - Không có staff available → task.Status = PENDING, ghi log
+2.2. pickStaff(equipTypeID):
+   - Filter shifts: StationID == equipTypeID hoặc StationID == nil (flexible)
+   - staffFreeAt = max(ScheduledEnd của tasks PENDING/ACTIVE/WAITING hiện có)
+   - Pick người có staffFreeAt sớm nhất (FIFO)
+   - Non-fatal nếu không có staff → log + AssignedTo = ""
 
-2.3. Tính scheduled_start:
-   - dep_done_at = max(scheduled_end của tất cả dependency steps)
-   - scheduled_start = max(dep_done_at, machine_free_at, staff_free_at)
-   - scheduled_end = scheduled_start + step.Duration
-
-2.4. Tạo StaffTask:
-   status = PENDING
-   machine_id = machine.ID
-   assigned_to = staff.ID
-   scheduled_start, scheduled_end
+2.3. calcSchedule:
+   - dep_done_at = max(ScheduledEnd của tất cả dependency tasks)
+   - scheduledStart = max(dep_done_at, machineFreeAt, staffFreeAt)
+   - scheduledEnd = scheduledStart + step.Duration
 ```
 
 #### Thuật toán — Phase 3: Idle Time Fill-In
@@ -292,38 +305,30 @@ Với mỗi step trong topo order:
 ```
 Với mỗi step có is_idle_step = true:
 
-3.1. Tách thành 2 tasks:
-   - SETUP task (ActiveTime giây): ACTIVE → nhân viên đặt đồ vào máy
-   - RETRIEVE task (khi timer xong): nhân viên lấy ra
-   - Khoảng giữa: idle window = Duration - ActiveTime - RequiresAttentionAt
+3.1. Tạo 2 tasks (cùng SOPStepID, phân biệt bởi TaskKind):
+   - SETUP task  (TaskKind=SETUP):    start → start + ActiveTime
+   - RETRIEVE task (TaskKind=RETRIEVE): start + ActiveTime → start + Duration
 
-3.2. Xác định idle window của staff này:
-   - idle_start = SETUP_task.scheduled_end
-   - idle_end = scheduled_end - RequiresAttentionAt (thời điểm phải quay lại)
-   - available_window = idle_end - idle_start
+3.2. Tính idle window:
+   - idleStart = setupTask.ScheduledEnd
+   - idleEnd   = retrieveTask.ScheduledEnd - RequiresAttentionAt
+   - availableWindow = idleEnd - idleStart - safetyBuffer(30s)
+   - if availableWindow <= 0: skip fill-in
 
-3.3. Tìm fill-in task dựa theo AttentionLevel:
-   - FULL_IDLE: tìm bất kỳ PENDING task nào có:
-       * duration < available_window - safety_buffer (30s)
-       * assigned_to == "" hoặc assigned_to == cùng staff
-   - NEARBY_IDLE: tìm task cùng station (machine_id thuộc cùng equipment_type)
-       * duration < available_window - safety_buffer
-   - PERIODIC_CHECK: tìm task có:
-       * duration < check_interval_sec - safety_buffer
-       * is_interruptible = true (quan trọng: fill-in task này phải có thể bị dừng)
-   - ACTIVE_WAIT: không fill-in. Log idle_duration cho analytics.
+3.3. Tìm fill-in theo AttentionLevel:
+   - FULL_IDLE:       bất kỳ PENDING task nào fit trong availableWindow
+   - NEARBY_IDLE:     PENDING task cùng equipment_type (defer: max_distance_meters)
+   - PERIODIC_CHECK:  PENDING task với duration < check_interval_sec - buffer,
+                      BẮT BUỘC is_interruptible = true
+   - ACTIVE_WAIT:     không fill-in
 
-3.4. Nếu tìm được fill-in task:
-   - fill_task.assigned_to = staff.ID
-   - fill_task.parent_task_id = WAITING_task.ID
-   - fill_task.is_interruptible = true
-   - fill_task.scheduled_start = idle_start
-   - fill_task.scheduled_end = idle_start + fill_task.duration
-
-3.5. Tính alert thresholds (lưu vào task metadata hoặc tính client-side):
-   - pre_alert_at = scheduled_end - RequiresAttentionAt - 120s (State 3a: còn 2:00)
-   - prep_at     = scheduled_end - RequiresAttentionAt - 45s  (State 3b: còn 0:45)
-   - retrieve_at = scheduled_end - RequiresAttentionAt        (State 3c: lấy ra ngay)
+3.4. Nếu tìm được fill-in:
+   - candidate.AssignedTo = staffID
+   - candidate.ParentTaskID = &retrieveTaskID
+   - candidate.IsInterruptible = true
+   - candidate.TaskKind = FILL_IN
+   - candidate.ScheduledStart = idleStart
+   - candidate.ScheduledEnd = idleStart + sopStep.Duration (của candidate)
 ```
 
 ### C.4 — Tích hợp vào `AllocationUseCase`
@@ -347,6 +352,8 @@ if !allSOPCompleted && uc.schedulingEngine != nil {
 **File:** `internal/usecase/order_orchestrator.go` hoặc production usecase
 
 Khi PO chuyển sang `IN_PROGRESS`, call `schedulingEngine.SchedulePO(ctx, po.ID)`.
+
+
 
 ---
 
