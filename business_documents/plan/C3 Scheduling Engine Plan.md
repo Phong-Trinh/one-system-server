@@ -904,3 +904,140 @@ var (
 > **Quan trọng:** `ErrNoMachineAvailable` và "no staff" **KHÔNG** là fatal errors.  
 > Engine vẫn tạo task với empty fields, log warning, và tiếp tục.  
 > Chỉ cyclic/invalid dependency mới là hard errors.
+
+---
+
+## Phần 8 — Ghi chú kiến trúc: Vấn đề chưa giải quyết & Hướng mở rộng
+
+> **⚠️ Cần xem xét trước khi implement** — Phần này ghi lại các gap được phát hiện trong quá trình review plan, cùng với đề xuất giải pháp. Tối xem xét lại và quyết định cách implement.
+
+---
+
+### 8.1 — Ba vấn đề chưa được giải quyết
+
+**Plan C.3 hiện tại xử lý từng PO độc lập.** Khi có nhiều PO chạy song song, 3 vấn đề sau chưa được tính đến:
+
+#### ❌ Vấn đề 1: Không gom batch (Batch Grouping)
+
+```
+Tình huống:
+  po_001 → task CHIÊN_GÀ (FRYER, 5 phút) ← đang PENDING, chưa bắt đầu
+  po_002 → task CHIÊN_GÀ (FRYER, 5 phút) ← vừa được tạo
+
+Plan hiện tại: tạo 2 task riêng, chạy lần lượt → 10 phút
+Tối ưu thực tế: gom vào 1 batch, chạy chung 1 lần → 5 phút
+```
+
+`SchedulePO()` không nhìn thấy PENDING tasks của các PO khác để gom chung.
+
+#### ❌ Vấn đề 2: Không kiểm soát Staff Overload
+
+```
+Tình huống:
+  Chỉ có 1 nhân viên Minh đang ca
+  10 PO liên tiếp được tạo
+
+Plan hiện tại: assign tất cả 10 PO cho Minh, stack queue dài vô tận
+→ Không có giới hạn, không có cảnh báo, không có cơ chế phân phối lại
+```
+
+`pickStaff()` dùng FIFO (free sớm nhất) nhưng không có threshold overload.
+
+#### ⚠️ Vấn đề 3: Độ trễ đơn hàng (Order Delay) — Có nền nhưng thụ động
+
+Plan có tính `ScheduledStart/ScheduledEnd` dựa trên `staffFreeAt` + `machineFreeAt`, ngầm phản ánh delay.  
+Tuy nhiên thiếu:
+- So sánh `ScheduledEnd` với **deadline/due_time** của PO
+- SLA warning khi PO sắp trễ
+- Cơ chế priority boost cho PO urgent
+
+---
+
+### 8.2 — Root Cause: Plan đang tư duy theo mô hình Push
+
+```
+[PUSH — Hiện tại]
+PO tạo → SchedulePO() → assign ngay cho staff + machine → StaffTask(PENDING)
+
+Vấn đề: assign tại thời điểm tạo PO, không có context toàn cục
+```
+
+---
+
+### 8.3 — Đề xuất: Chuyển sang mô hình Pull + Dispatcher
+
+```
+[PULL — Đề xuất]
+PO tạo → SchedulePO() → Tạo task vào QUEUED pool (chưa assign)
+                                      ↓
+              Resource rảnh → Dispatcher kéo task tốt nhất ra → assign
+```
+
+#### Thay đổi cần thiết
+
+**1. Thêm trạng thái `QUEUED` vào task lifecycle:**
+
+```
+QUEUED → PENDING (đã assign) → ACTIVE → DONE
+   ↑
+   Tạo ở đây khi PO → IN_PROGRESS
+   (biết phải làm gì, chưa biết ai làm)
+```
+
+**2. `SchedulePO()` làm ít đi — chỉ lo Planning:**
+
+```go
+// SchedulePO() mới: chỉ build DAG + tạo tasks ở trạng thái QUEUED
+// KHÔNG gọi pickMachine() / pickStaff()
+// Vẫn tính ScheduledEnd ước tính để estimate, không phải cam kết cứng
+```
+
+Kahn's Algorithm và toàn bộ logic build DAG **giữ nguyên 100%**. Chỉ thay đổi *khi nào* assign, không thay đổi *logic gì cần làm*.
+
+**3. Thêm `Dispatcher` — component mới, nhỏ, độc lập:**
+
+```go
+type Dispatcher interface {
+    // Gọi khi có resource rảnh (staff hoặc machine)
+    Dispatch(ctx context.Context, nodeID string) error
+}
+
+// Trigger events:
+//   - Staff/Machine hoàn thành task (báo "free")
+//   - PO mới tạo ra (có QUEUED tasks mới vào pool)
+//   - Shift bắt đầu / kết thúc
+
+// Logic Dispatcher (đơn giản):
+//   for each free resource at nodeID:
+//       candidates = QUEUED tasks phù hợp với resource
+//       pick task theo Dispatch Rule (EDD)
+//       assign → task trạng thái PENDING
+```
+
+**4. Dispatch Rule duy nhất cần cho MVP:**
+
+> **EDD — Earliest Due Date first**  
+> Task thuộc PO nào có `due_time` sớm nhất → ưu tiên làm trước.  
+> Tự nhiên giải quyết cả batch grouping (machine rảnh kéo nhiều task cùng type) và order delay (PO gấp lên trước).
+
+---
+
+### 8.4 — So sánh tác động
+
+| Vấn đề | Push (hiện tại) | Pull + Dispatcher |
+|---|---|---|
+| **Batch grouping** | ❌ Không có | ✅ Machine rảnh kéo nhiều task cùng type → tự gom |
+| **Staff overload** | ❌ Queue dài vô hạn | ✅ Staff chỉ nhận task khi thực sự rảnh |
+| **Order delay** | ⚠️ Thụ động (chỉ estimate) | ✅ EDD rule chủ động ưu tiên PO gần deadline |
+| **Complexity thêm** | — | Thêm 1 interface + 1 usecase nhỏ |
+| **Thay đổi C.3 hiện tại** | — | SchedulePO() bỏ pickStaff/pickMachine, thêm QUEUED state |
+
+---
+
+### 8.5 — Quyết định cần đưa ra
+
+- [ ] Có chuyển sang Pull model không, hay giữ Push + bổ sung patch nhỏ?
+- [ ] Nếu Pull: `QUEUED` là trạng thái riêng trong DB hay chỉ là `PENDING` với `AssignedTo = ""`?
+- [ ] Dispatcher chạy **synchronous** (trong cùng request) hay **async** (background worker)?
+- [ ] MVP có cần EDD không, hay chỉ FIFO đơn giản trước?
+
