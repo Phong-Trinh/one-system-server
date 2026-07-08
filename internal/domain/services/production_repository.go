@@ -139,6 +139,10 @@ type StaffTaskRepository interface {
 	// SchedulingEngine dùng để tìm parent task có idle window có thể chèn fill-in task.
 	FindWaitingByStaff(ctx context.Context, staffID string) ([]*models.StaffTask, error)
 
+	// FindQueued trả về tất cả QUEUED tasks tại một node, sắp xếp theo CreatedAt (FIFO).
+	// Dispatcher dùng để lấy pool tasks cần được assign khi có resource rảnh.
+	FindQueued(ctx context.Context, nodeID string) ([]*models.StaffTask, error)
+
 	// Update ghi lại toàn bộ task (dùng khi cập nhật status, timestamps).
 	Update(ctx context.Context, t *models.StaffTask) error
 }

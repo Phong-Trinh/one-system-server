@@ -23,6 +23,7 @@ type staffTaskDoc struct {
 	POID            string             `bson:"po_id"`
 	OrderItemID     *string            `bson:"order_item_id,omitempty"` // FK → OrderItem (nil = Phase 1)
 	SOPStepID       string             `bson:"sop_step_id"`
+	TaskKind        models.TaskKind    `bson:"task_kind"`
 	AssignedTo      string             `bson:"assigned_to"`  // "" = unassigned
 	MachineID       string             `bson:"machine_id"`   // "" = manual step
 	NodeID          string             `bson:"node_id"`
@@ -43,6 +44,7 @@ func taskToDoc(t *models.StaffTask) *staffTaskDoc {
 		POID:            t.POID,
 		OrderItemID:     t.OrderItemID,
 		SOPStepID:       t.SOPStepID,
+		TaskKind:        t.TaskKind,
 		AssignedTo:      t.AssignedTo,
 		MachineID:       t.MachineID,
 		NodeID:          t.NodeID,
@@ -64,6 +66,7 @@ func docToTask(d *staffTaskDoc) *models.StaffTask {
 		POID:            d.POID,
 		OrderItemID:     d.OrderItemID,
 		SOPStepID:       d.SOPStepID,
+		TaskKind:        d.TaskKind,
 		AssignedTo:      d.AssignedTo,
 		MachineID:       d.MachineID,
 		NodeID:          d.NodeID,
@@ -97,13 +100,17 @@ func NewStaffTaskRepository(client *Client, dbName string) services.StaffTaskRep
 	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{{Key: "assigned_to", Value: 1}, {Key: "status", Value: 1}},
 	})
-	// node_id + status: FindByNode (Manager view, fill-in lookup)
+	// node_id + status: FindByNode (Manager view, fill-in lookup), FindQueued (Dispatcher)
 	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{{Key: "node_id", Value: 1}, {Key: "status", Value: 1}},
 	})
 	// parent_task_id: FindWaitingByStaff — tìm fill-in tasks của một parent WAITING task
 	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{{Key: "parent_task_id", Value: 1}},
+	})
+	// created_at: FIFO ordering trong Dispatcher.Dispatch()
+	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys: bson.D{{Key: "created_at", Value: 1}},
 	})
 
 	return &staffTaskRepository{coll: coll}
@@ -189,6 +196,31 @@ func (r *staffTaskRepository) FindWaitingByStaff(ctx context.Context, staffID st
 		"status":      models.TaskWaiting,
 	}
 	return r.findMany(ctx, filter, "staffTaskRepository.FindWaitingByStaff")
+}
+
+// FindQueued trả về tất cả QUEUED tasks tại một node, sắp xếp theo CreatedAt tăng dần (FIFO).
+// Dispatcher dùng để lấy danh sách tasks cần được assign.
+func (r *staffTaskRepository) FindQueued(ctx context.Context, nodeID string) ([]*models.StaffTask, error) {
+	filter := bson.M{
+		"node_id": nodeID,
+		"status":  models.TaskQueued,
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}})
+	cur, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("staffTaskRepository.FindQueued: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var result []*models.StaffTask
+	for cur.Next(ctx) {
+		var doc staffTaskDoc
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		result = append(result, docToTask(&doc))
+	}
+	return result, cur.Err()
 }
 
 // Update ghi lại toàn bộ document của task.

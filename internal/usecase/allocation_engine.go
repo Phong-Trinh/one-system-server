@@ -24,16 +24,22 @@ type AllocationUseCase interface {
 	ConfirmCompletion(ctx context.Context, batchID string) error
 	// SetFacade injects the supply chain facade to break circular dependencies.
 	SetFacade(facade *SupplyChainFacade)
+	// SetSchedulingEngine injects the SchedulingEngine and Dispatcher.
+	SetSchedulingEngine(engine SchedulingEngine, dispatcher Dispatcher)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
 
 type allocationUseCase struct {
-	poRepo      services.ProductionOrderRepository
-	batchRepo   services.ProductionBatchRepository
-	machineRepo services.MachineRepository
-	sopRepo     services.SOPRepository
-	facade      *SupplyChainFacade
+	poRepo           services.ProductionOrderRepository
+	batchRepo        services.ProductionBatchRepository
+	machineRepo      services.MachineRepository
+	sopRepo          services.SOPRepository
+	facade           *SupplyChainFacade
+	// C.5: SchedulingEngine được inject để gọi SchedulePO khi PO được decompose
+	schedulingEngine SchedulingEngine
+	// C.4: Dispatcher được inject để assign tasks mới khi batch DONE
+	dispatcher       Dispatcher
 }
 
 func NewAllocationUseCase(
@@ -52,6 +58,13 @@ func NewAllocationUseCase(
 
 func (uc *allocationUseCase) SetFacade(facade *SupplyChainFacade) {
 	uc.facade = facade
+}
+
+// SetSchedulingEngine inject SchedulingEngine vào AllocationUseCase.
+// Gọi sau khi khởi tạo để tránh circular dependency.
+func (uc *allocationUseCase) SetSchedulingEngine(engine SchedulingEngine, dispatcher Dispatcher) {
+	uc.schedulingEngine = engine
+	uc.dispatcher = dispatcher
 }
 
 // ── Private Helpers ───────────────────────────────────────────────────────────
@@ -109,8 +122,21 @@ func (uc *allocationUseCase) DecomposePO(ctx context.Context, poID string) error
 		}
 	}
 
-	return uc.RunAllocation(ctx, po.NodeID)
+	if err := uc.RunAllocation(ctx, po.NodeID); err != nil {
+		return err
+	}
+
+	// C.5 — Trigger SchedulingEngine sau khi batch được tạo và PO đang IN_PROGRESS.
+	// Non-fatal: nếu engine fail, batch flow vẫn tiếp tục.
+	if uc.schedulingEngine != nil {
+		if _, err := uc.schedulingEngine.SchedulePO(ctx, poID); err != nil {
+			fmt.Printf("[AllocationUseCase] SchedulePO warning for po=%s: %v\n", poID, err)
+		}
+	}
+
+	return nil
 }
+
 
 // ── RunAllocation ─────────────────────────────────────────────────────────────
 
@@ -419,5 +445,17 @@ func (uc *allocationUseCase) ConfirmCompletion(ctx context.Context, batchID stri
 		}
 	}
 
-	return uc.RunAllocation(ctx, po.NodeID)
+	// C.4 — Trigger Dispatcher sau khi batch DONE + RunAllocation xong.
+	// Dispatch sẽ assign các QUEUED tasks mới được unlock bởi dependency resolution.
+	// Non-fatal: nếu Dispatcher fail, batch flow vẫn tiếp tục.
+	if err := uc.RunAllocation(ctx, po.NodeID); err != nil {
+		return err
+	}
+	if uc.dispatcher != nil {
+		if err := uc.dispatcher.Dispatch(ctx, po.NodeID); err != nil {
+			fmt.Printf("[AllocationUseCase] Dispatcher.Dispatch warning for node=%s: %v\n", po.NodeID, err)
+		}
+	}
+
+	return nil
 }

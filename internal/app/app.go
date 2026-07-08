@@ -61,6 +61,8 @@ func New(ctx context.Context) (*App, error) {
 	poRepo := mongorepo.NewProductionOrderRepository(mongoClient, dbName)
 	batchRepo := mongorepo.NewProductionBatchRepository(mongoClient, dbName)
 	itemRepo := mongorepo.NewItemRepository(mongoClient, dbName)
+	shiftRepo := mongorepo.NewStaffShiftRepository(mongoClient, dbName)
+	taskRepo := mongorepo.NewStaffTaskRepository(mongoClient, dbName)
 
 	nodeItemConfigRepo := mongorepo.NewNodeItemConfigRepository(mongoClient, dbName)
 
@@ -95,6 +97,10 @@ func New(ctx context.Context) (*App, error) {
 	productionUC := usecase.NewProductionUseCase(poRepo, bomRepo, sopRepo, nodeRepo)
 	itemUC := usecase.NewItemUseCase(itemRepo)
 	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
+
+	dispatcher := usecase.NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo)
+	schedulingEngine := usecase.NewSchedulingEngine(poRepo, sopRepo, taskRepo, dispatcher)
+	allocationUC.SetSchedulingEngine(schedulingEngine, dispatcher)
 
 	// ── Orchestrator (Auto-Decomposition Engine) ─────────────────────────────
 	orchestratorCfg := usecase.DefaultOrchestratorConfig()

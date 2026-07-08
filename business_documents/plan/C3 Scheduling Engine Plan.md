@@ -13,46 +13,88 @@ Thời gian ước tính: ~10h
 ### 1.1 Struct & Interface
 
 ```go
-// SchedulingEngine là core của KDS redesign.
-// Nó nhận 1 PO, load SOP steps, build DAG, assign machine + staff,
-// tính thời gian, và lưu StaffTask vào repo.
+// SchedulingEngine lo việc planning: build DAG + tạo tasks ở trạng thái QUEUED.
+// KHÔNG assign staff/machine — đó là việc của Dispatcher.
 type SchedulingEngine interface {
-    // SchedulePO: entry point chính — gọi khi PO → IN_PROGRESS
+    // SchedulePO: entry point chính — gọi khi PO → IN_PROGRESS.
+    // Build DAG từ SOP, tạo StaffTask ở trạng thái QUEUED (chưa assign).
+    // Sau khi tạo xong → gọi dispatcher.Dispatch() để assign ngay (sync).
     SchedulePO(ctx context.Context, poID string) ([]*models.StaffTask, error)
 
-    // RescheduleOnShiftChange: gọi khi có shift mới bắt đầu hoặc kết thúc
-    // → re-assign PENDING tasks không có staff
+    // RescheduleOnShiftChange: gọi khi có shift mới bắt đầu hoặc kết thúc.
+    // Trigger Dispatcher chạy lại để assign QUEUED tasks còn trống.
     RescheduleOnShiftChange(ctx context.Context, nodeID string) error
+}
+
+// Dispatcher lo việc assignment: kéo QUEUED task phù hợp → assign resource.
+type Dispatcher interface {
+    // Dispatch: gọi khi có resource rảnh (staff hoàn thành task, PO mới tạo, shift thay đổi).
+    // Chạy synchronous trong cùng request — MVP không cần background worker.
+    Dispatch(ctx context.Context, nodeID string) error
 }
 
 type schedulingEngine struct {
     poRepo        services.ProductionOrderRepository
     sopRepo       services.SOPRepository
     machineRepo   services.MachineRepository
+    batchRepo     services.ProductionBatchRepository // tính machine free_at
     shiftRepo     services.StaffShiftRepository
     taskRepo      services.StaffTaskRepository
-    safetyBuffer  time.Duration  // default 30s
+    dispatcher    Dispatcher
+    safetyBuffer  time.Duration   // default 30s
     now           func() time.Time // injectable cho testing
+}
+
+type dispatcher struct {
+    shiftRepo   services.StaffShiftRepository
+    machineRepo services.MachineRepository
+    taskRepo    services.StaffTaskRepository
+    sopRepo     services.SOPRepository
+    now         func() time.Time
 }
 ```
 
 ### 1.2 Cấu trúc nội bộ
 
+**SchedulingEngine** — chỉ lo planning:
+
 ```
 SchedulePO(poID)
   │
   ├── [1] loadPO(poID) → PO + SOP + Steps
-  ├── [2] buildDAG(steps) → topo order [][]SOPStep (các nhóm song song)
-  ├── [3] loadAvailableStaff(nodeID) → map[equipTypeID][]StaffShift
-  ├── [4] loadExistingTasks(nodeID) → map[staffID][]StaffTask (để tính free_at)
+  ├── [2] idempotency check: taskRepo.FindByPO(poID) → lọc steps cần schedule
+  ├── [3] buildDAG(steps) → topo order [][]SOPStep (các nhóm song song)
   │
   └── for each group in topo order:
         for each step in group:
-          ├── [5] pickMachine(nodeID, step) → machine, machine_free_at
-          ├── [6] pickStaff(step.EquipmentTypeID) → shift, staff_free_at
-          ├── [7] calcSchedule(depDoneAt, machineFreeAt, staffFreeAt)
-          ├── [8] buildTask(s)/buildIdleTasks() → StaffTask(s)
-          └── [9] insertFillIn(idleWindow, staff) → fill-in StaffTask?
+          ├── [4] calcEstimatedSchedule(depDoneAt) → ước tính start/end (không cam kết)
+          ├── [5] buildTask(s)/buildIdleTasks() → StaffTask(Status=QUEUED)
+          └── [6] taskRepo.Create(task)
+  │
+  └── [7] dispatcher.Dispatch(ctx, po.NodeID)  ← gọi sync sau khi tạo xong tasks
+```
+
+**Dispatcher** — chỉ lo assignment:
+
+```
+Dispatch(nodeID)
+  │
+  ├── [1] Load QUEUED tasks tại nodeID → []StaffTask
+  ├── [2] Load active shifts + machine status tại nodeID
+  │
+  └── for each free resource:
+        ├── [3] candidates = QUEUED tasks phù hợp với resource (equipTypeID match)
+        ├── [4] sort candidates theo EDD (due_time của PO) — Phase 2
+        │         MVP: FIFO (theo thứ tự CreatedAt)
+        ├── [5] pickMachine(nodeID, step) → machine, machineFreeAt
+        ├── [6] calcSchedule(depDoneAt, machineFreeAt, staffFreeAt)
+        ├── [7] task.Status = PENDING, task.AssignedTo = staffID, task.MachineID = machineID
+        └── [8] taskRepo.Update(task)
+
+  └── Fill-in logic (sau khi assign xong NORMAL tasks):
+        for each WAITING task với idle window còn trống:
+          ├── findFillInTask(idleWindow, staff, nodeID)
+          └── assign fill-in nếu tìm được
 ```
 
 ---
@@ -200,17 +242,21 @@ StaffTask{
     POID:           po.ID,
     SOPStepID:      step.ID,
     NodeID:         po.NodeID,
-    AssignedTo:     staff?.StaffID hoặc "",
-    MachineID:      machine?.ID hoặc "",
-    Status:         TaskPending,
+    AssignedTo:     "",          // Dispatcher sẽ fill sau
+    MachineID:      "",          // Dispatcher sẽ fill sau
+    Status:         TaskQueued,  // ← QUEUED, chưa assign
+    TaskKind:       TaskKindNormal,
     Priority:       step.SeqNo,
     IsInterruptible: false,
     ParentTaskID:   nil,
-    ScheduledStart: start,
-    ScheduledEnd:   end,
+    ScheduledStart: estimatedStart, // ước tính, Dispatcher sẽ recalc khi assign
+    ScheduledEnd:   estimatedEnd,   // ước tính
     CreatedAt:      now(),
 }
 ```
+
+> **Lưu ý:** `ScheduledStart/End` ở đây là **estimate** dùng cho UI "dự kiến".  
+> Dispatcher sẽ recalculate và ghi lại giá trị **chính xác** khi assign resource thực tế.
 
 ---
 
@@ -907,15 +953,17 @@ var (
 
 ---
 
-## Phần 8 — Ghi chú kiến trúc: Vấn đề chưa giải quyết & Hướng mở rộng
+## Phần 8 — Kiến trúc Pull + Dispatcher: Quyết định & Rationale
 
-> **⚠️ Cần xem xét trước khi implement** — Phần này ghi lại các gap được phát hiện trong quá trình review plan, cùng với đề xuất giải pháp. Tối xem xét lại và quyết định cách implement.
+> ✅ **Đã quyết định** — Phần này ghi lại các vấn đề phát hiện được và quyết định kiến trúc đã thống nhất.
 
 ---
 
-### 8.1 — Ba vấn đề chưa được giải quyết
+### 8.1 — Ba vấn đề của Push model (đã giải quyết)
 
-**Plan C.3 hiện tại xử lý từng PO độc lập.** Khi có nhiều PO chạy song song, 3 vấn đề sau chưa được tính đến:
+**Push model ban đầu:** `SchedulePO()` assign ngay machine + staff tại thời điểm PO vào IN_PROGRESS.
+
+Vấn đề:
 
 #### ❌ Vấn đề 1: Không gom batch (Batch Grouping)
 
@@ -924,11 +972,11 @@ Tình huống:
   po_001 → task CHIÊN_GÀ (FRYER, 5 phút) ← đang PENDING, chưa bắt đầu
   po_002 → task CHIÊN_GÀ (FRYER, 5 phút) ← vừa được tạo
 
-Plan hiện tại: tạo 2 task riêng, chạy lần lượt → 10 phút
-Tối ưu thực tế: gom vào 1 batch, chạy chung 1 lần → 5 phút
+Push model: tạo 2 task riêng, chạy lần lượt → 10 phút
+Thực tế tối ưu: gom vào 1 batch, chạy chung 1 lần → 5 phút
 ```
 
-`SchedulePO()` không nhìn thấy PENDING tasks của các PO khác để gom chung.
+**Giải pháp:** Dispatcher nhìn thấy toàn bộ QUEUED tasks khi FRYER rảnh → tự gom.
 
 #### ❌ Vấn đề 2: Không kiểm soát Staff Overload
 
@@ -937,107 +985,131 @@ Tình huống:
   Chỉ có 1 nhân viên Minh đang ca
   10 PO liên tiếp được tạo
 
-Plan hiện tại: assign tất cả 10 PO cho Minh, stack queue dài vô tận
-→ Không có giới hạn, không có cảnh báo, không có cơ chế phân phối lại
+Push model: assign tất cả 10 PO cho Minh, stack queue dài vô tận
 ```
 
-`pickStaff()` dùng FIFO (free sớm nhất) nhưng không có threshold overload.
+**Giải pháp:** Staff chỉ nhận task khi Dispatcher thấy staff thực sự rảnh (freeAt ≤ now + threshold).
 
 #### ⚠️ Vấn đề 3: Độ trễ đơn hàng (Order Delay) — Có nền nhưng thụ động
 
-Plan có tính `ScheduledStart/ScheduledEnd` dựa trên `staffFreeAt` + `machineFreeAt`, ngầm phản ánh delay.  
-Tuy nhiên thiếu:
-- So sánh `ScheduledEnd` với **deadline/due_time** của PO
-- SLA warning khi PO sắp trễ
-- Cơ chế priority boost cho PO urgent
+Thiếu cơ chế priority boost cho PO urgent.
+
+**Giải pháp:** Dispatcher sort candidates theo EDD (Earliest Due Date) — Phase 2 khi PO có `due_time`.
+MVP: FIFO theo `CreatedAt`.
 
 ---
 
-### 8.2 — Root Cause: Plan đang tư duy theo mô hình Push
+### 8.2 — Kiến trúc Pull + Dispatcher: Quyết định cuối cùng
 
 ```
-[PUSH — Hiện tại]
-PO tạo → SchedulePO() → assign ngay cho staff + machine → StaffTask(PENDING)
-
-Vấn đề: assign tại thời điểm tạo PO, không có context toàn cục
-```
-
----
-
-### 8.3 — Đề xuất: Chuyển sang mô hình Pull + Dispatcher
-
-```
-[PULL — Đề xuất]
-PO tạo → SchedulePO() → Tạo task vào QUEUED pool (chưa assign)
+[PULL — Đã áp dụng]
+PO tạo → SchedulePO() → Tạo tasks ở QUEUED pool (chưa assign)
                                       ↓
-              Resource rảnh → Dispatcher kéo task tốt nhất ra → assign
+              dispatcher.Dispatch() → kéo QUEUED task phù hợp → assign machine + staff → PENDING
 ```
 
-#### Thay đổi cần thiết
+---
 
-**1. Thêm trạng thái `QUEUED` vào task lifecycle:**
+### 8.3 — Các quyết định cụ thể
+
+| # | Câu hỏi | Quyết định | Lý do |
+|---|---|---|---|
+| **Q1** | Có chuyển Pull không? | ✅ Có — incremental | Không rewrite C.3, chỉ shrink SchedulePO() + thêm Dispatcher |
+| **Q2** | `QUEUED` là state riêng hay `PENDING + AssignedTo=""`? | ✅ **State riêng** | Tránh bug khi `FindActiveByStaff()` bắt nhầm unassigned tasks |
+| **Q3** | Dispatcher sync hay async? | ✅ **Sync — MVP** | Đơn giản, dễ test, không cần background worker. Gọi cuối mỗi `SchedulePO()`, `CompleteTask()`, `StartShift()` |
+| **Q4** | MVP cần EDD không? | ❌ Defer Phase 2 | FIFO (`CreatedAt`) đủ dùng. EDD cần `PO.due_time` — chưa có trong model |
+
+---
+
+### 8.4 — TaskStatus lifecycle mới
 
 ```
 QUEUED → PENDING (đã assign) → ACTIVE → DONE
-   ↑
-   Tạo ở đây khi PO → IN_PROGRESS
-   (biết phải làm gì, chưa biết ai làm)
+  ↑                ↑
+  Tạo ở đây        Dispatcher assign tại đây
+  (SchedulePO)     (sync, sau khi QUEUED tasks được tạo)
+
+CANCELLED ← từ QUEUED hoặc PENDING (Phase 2)
 ```
 
-**2. `SchedulePO()` làm ít đi — chỉ lo Planning:**
-
-```go
-// SchedulePO() mới: chỉ build DAG + tạo tasks ở trạng thái QUEUED
-// KHÔNG gọi pickMachine() / pickStaff()
-// Vẫn tính ScheduledEnd ước tính để estimate, không phải cam kết cứng
-```
-
-Kahn's Algorithm và toàn bộ logic build DAG **giữ nguyên 100%**. Chỉ thay đổi *khi nào* assign, không thay đổi *logic gì cần làm*.
-
-**3. Thêm `Dispatcher` — component mới, nhỏ, độc lập:**
-
-```go
-type Dispatcher interface {
-    // Gọi khi có resource rảnh (staff hoặc machine)
-    Dispatch(ctx context.Context, nodeID string) error
-}
-
-// Trigger events:
-//   - Staff/Machine hoàn thành task (báo "free")
-//   - PO mới tạo ra (có QUEUED tasks mới vào pool)
-//   - Shift bắt đầu / kết thúc
-
-// Logic Dispatcher (đơn giản):
-//   for each free resource at nodeID:
-//       candidates = QUEUED tasks phù hợp với resource
-//       pick task theo Dispatch Rule (EDD)
-//       assign → task trạng thái PENDING
-```
-
-**4. Dispatch Rule duy nhất cần cho MVP:**
-
-> **EDD — Earliest Due Date first**  
-> Task thuộc PO nào có `due_time` sớm nhất → ưu tiên làm trước.  
-> Tự nhiên giải quyết cả batch grouping (machine rảnh kéo nhiều task cùng type) và order delay (PO gấp lên trước).
+**Lưu ý:** `ScheduledStart/End` trên QUEUED task là **estimate** hiển thị cho UI.  
+Dispatcher **recalculate** và ghi lại giá trị chính xác khi assign.
 
 ---
 
-### 8.4 — So sánh tác động
+### 8.5 — Tác động lên các phần đã plan
 
-| Vấn đề | Push (hiện tại) | Pull + Dispatcher |
-|---|---|---|
-| **Batch grouping** | ❌ Không có | ✅ Machine rảnh kéo nhiều task cùng type → tự gom |
-| **Staff overload** | ❌ Queue dài vô hạn | ✅ Staff chỉ nhận task khi thực sự rảnh |
-| **Order delay** | ⚠️ Thụ động (chỉ estimate) | ✅ EDD rule chủ động ưu tiên PO gần deadline |
-| **Complexity thêm** | — | Thêm 1 interface + 1 usecase nhỏ |
-| **Thay đổi C.3 hiện tại** | — | SchedulePO() bỏ pickStaff/pickMachine, thêm QUEUED state |
+```
+Block A — Models:
+  + Thêm TaskStatus.QUEUED (1 dòng)
+  Không đổi gì khác.
+
+Block B — Repos:
+  + Thêm FindQueued(ctx, nodeID) vào StaffTaskRepository interface
+  + Implement FindQueued trong MongoDB repo (index: node_id + status)
+  Không đổi gì khác.
+
+Block C.3 — SchedulingEngine:
+  ~ SchedulePO(): bỏ pickStaff() + pickMachine(); tạo tasks ở QUEUED; gọi Dispatcher cuối hàm
+  + Dispatcher: interface mới (~20 dòng) + usecase mới (~100 dòng)
+  C.1, C.2, C.4, C.5: không đổi
+
+Test cases T1–T23:
+  ~ T1, T8, T9: expected task.Status = QUEUED sau SchedulePO(),
+    sau đó = PENDING sau Dispatcher.Dispatch()
+  + Thêm test cases T24–T26 cho Dispatcher (xem bên dưới)
+  Không xoá test case nào.
+```
 
 ---
 
-### 8.5 — Quyết định cần đưa ra
+### 8.6 — Test cases bổ sung cho Dispatcher
 
-- [ ] Có chuyển sang Pull model không, hay giữ Push + bổ sung patch nhỏ?
-- [ ] Nếu Pull: `QUEUED` là trạng thái riêng trong DB hay chỉ là `PENDING` với `AssignedTo = ""`?
-- [ ] Dispatcher chạy **synchronous** (trong cùng request) hay **async** (background worker)?
-- [ ] MVP có cần EDD không, hay chỉ FIFO đơn giản trước?
+#### T24 — Dispatch: QUEUED Task + Staff Rảnh → Assign
+
+```
+Setup:
+  QUEUED task T1: equipType=FRYER, nodeID=KITCHEN_01
+  Staff Minh: station=FRYER, freeAt=T0
+  FRYER_01: IDLE
+
+Input: Dispatch("KITCHEN_01")
+
+Expected:
+  T1.AssignedTo  = "staff_minh"
+  T1.MachineID   = "FRYER_01"
+  T1.Status      = PENDING
+  T1.ScheduledStart recalculated = T0
+```
+
+#### T25 — Dispatch: Không Có Staff → Task Giữ Nguyên QUEUED
+
+```
+Setup:
+  QUEUED task T1: equipType=FRYER
+  Không có active shift nào tại node
+
+Input: Dispatch("KITCHEN_01")
+
+Expected:
+  T1.Status = QUEUED (không thay đổi)
+  log: "no available staff for queued task <taskID>"
+  Không return error
+```
+
+#### T26 — Dispatch: FIFO — Task Cũ Hơn Được Assign Trước
+
+```
+Setup:
+  QUEUED task A: CreatedAt = T0 - 60s
+  QUEUED task B: CreatedAt = T0 - 10s
+  Cả 2 đều fit với staff Minh (FRYER, chỉ đủ sức làm 1 task ngay)
+
+Input: Dispatch("KITCHEN_01")
+
+Expected:
+  Task A được assign (CreatedAt cũ hơn → FIFO)
+  Task B vẫn QUEUED
+```
+
 

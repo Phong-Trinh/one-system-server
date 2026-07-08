@@ -262,10 +262,17 @@ func (o *OrderPoolingOrchestrator) flushNode(ctx context.Context, nodeID string)
 		Msg("[Orchestrator] Flushing ALL pooled orders to kitchen for batching")
 
 	for _, e := range toFlush {
-		if err := o.allocationUC.DecomposePO(ctx, e.po.ID); err != nil {
-			log.Error().Err(err).Str("po_id", e.po.ID).Msg("[Orchestrator] DecomposePO failed — re-enqueuing")
-			// Re-enqueue on failure to prevent order loss
+		// Update PO status to IN_PROGRESS before decomposing
+		if err := o.poRepo.UpdateStatus(ctx, e.po.ID, models.POInProgress, nil); err != nil {
+			log.Error().Err(err).Str("po_id", e.po.ID).Msg("[Orchestrator] Failed to set PO IN_PROGRESS — re-enqueuing")
 			o.Enqueue(e.po)
+			continue
+		}
+		// Refresh PO struct
+		e.po.Status = models.POInProgress
+
+		if err := o.allocationUC.DecomposePO(ctx, e.po.ID); err != nil {
+			log.Error().Err(err).Str("po_id", e.po.ID).Msg("[Orchestrator] DecomposePO failed")
 		} else {
 			log.Info().Str("po_id", e.po.ID).Msg("[Orchestrator] ✅ PO decomposed and pushed to KDS")
 		}
