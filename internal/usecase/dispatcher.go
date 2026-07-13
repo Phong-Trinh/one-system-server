@@ -1,4 +1,4 @@
-package usecase
+﻿package usecase
 
 import (
 	"context"
@@ -72,30 +72,21 @@ func NewDispatcher(
 //     d. calcSchedule → scheduledStart/End chính xác
 //     e. task.Status = PENDING, ghi DB
 func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
-	// [1] Load QUEUED tasks (FIFO)
-	queuedTasks, err := d.taskRepo.FindQueued(ctx, nodeID)
-	if err != nil {
-		return fmt.Errorf("dispatcher.Dispatch: load queued tasks: %w", err)
-	}
-
-	// [2] Load active shifts + tính staffFreeAt
+	// [1] Load active shifts + tinh staffFreeAt
 	shifts, err := d.shiftRepo.FindActiveByNode(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: load shifts: %w", err)
 	}
-
-	// staffFreeAt[staffID] = thời điểm nhân viên rảnh (max ScheduledEnd của tasks đang live)
 	staffFreeAt, err := d.calcStaffFreeAt(ctx, shifts)
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: calc staff free times: %w", err)
 	}
 
-	// [3] Load machines tại node
+	// [2] Load machines tai node
 	machines, err := d.machineRepo.FindByNodeID(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: load machines: %w", err)
 	}
-	// machineFreeAt[machineID] = thời điểm máy rảnh
 	machineFreeAt, err := d.calcMachineFreeAt(ctx, machines)
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: calc machine free times: %w", err)
@@ -103,90 +94,113 @@ func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
 
 	now := d.now()
 
-	// [4] Assign mỗi QUEUED task
-	for _, task := range queuedTasks {
-		// Load SOPStep để biết equipmentTypeID và duration
-		step, err := d.sopRepo.FindStepByID(ctx, task.SOPStepID)
-		if err != nil {
-			log.Printf("dispatcher.Dispatch: load step %s: %v (skip)", task.SOPStepID, err)
+	// [3] Pass 1: Assign SETUP va RETRIEVE tasks truoc.
+	// NORMAL tasks (fill-in candidates) duoc bo qua o pass nay.
+	pass1Tasks, err := d.taskRepo.FindQueued(ctx, nodeID)
+	if err != nil {
+		return fmt.Errorf("dispatcher.Dispatch: load queued tasks (pass 1): %w", err)
+	}
+	for _, task := range pass1Tasks {
+		if task.TaskKind != models.TaskKindSetup && task.TaskKind != models.TaskKindRetrieve {
 			continue
 		}
-		if step == nil {
-			log.Printf("dispatcher.Dispatch: step %s not found (skip task %s)", task.SOPStepID, task.ID)
-			continue
-		}
-
-		// [4a] Pick machine
-		machineID, mFreeAt := d.pickMachine(machines, machineFreeAt, step, now)
-
-		// [4b] Pick staff
-		shift, sFreeAt := d.pickStaff(shifts, staffFreeAt, step.EquipmentTypeID, now)
-		if shift == nil {
-			log.Printf("dispatcher.Dispatch: no available staff for queued task %s (node=%s, equipType=%v)",
-				task.ID, nodeID, step.EquipmentTypeID)
-			continue // Task vẫn QUEUED — Dispatcher sẽ retry khi có staff mới
-		}
-
-		// [4c] Tính dep_done_at: estimate từ ScheduledEnd hiện tại của task
-		// (đã được SchedulingEngine tính theo group; đây là lower bound)
-		depDoneAt := task.ScheduledStart // estimate từ SchedulingEngine, dùng làm dep bound
-
-		// [4d] calcSchedule
-		scheduledStart := maxTime(depDoneAt, mFreeAt, sFreeAt)
-		var scheduledEnd time.Time
-		if task.TaskKind == models.TaskKindSetup {
-			// Setup task: duration = SOPStep.ActiveTime
-			activeTime := 0
-			if step.ActiveTime != nil {
-				activeTime = *step.ActiveTime
-			}
-			scheduledEnd = scheduledStart.Add(time.Duration(activeTime) * time.Second)
-		} else if task.TaskKind == models.TaskKindRetrieve {
-			retrieveDuration := step.Duration
-			if step.ActiveTime != nil {
-				retrieveDuration -= *step.ActiveTime
-			}
-			scheduledEnd = scheduledStart.Add(time.Duration(retrieveDuration) * time.Second)
-		} else {
-			// Normal, FillIn: duration = SOPStep.Duration
-			scheduledEnd = scheduledStart.Add(time.Duration(step.Duration) * time.Second)
-		}
-
-		// [4e] Assign task
-		task.AssignedTo = shift.StaffID
-		task.MachineID = machineID
-		task.Status = models.TaskPending
-		task.ScheduledStart = scheduledStart
-		task.ScheduledEnd = scheduledEnd
-
-		if err := d.taskRepo.Update(ctx, task); err != nil {
-			log.Printf("dispatcher.Dispatch: update task %s: %v (skip)", task.ID, err)
-			continue
-		}
-
-		// Update staffFreeAt: người này giờ bận đến scheduledEnd
-		staffFreeAt[shift.StaffID] = scheduledEnd
-
-		// Update machineFreeAt nếu có machine
-		if machineID != "" {
-			if machineFreeAt[machineID].Before(scheduledEnd) {
-				machineFreeAt[machineID] = scheduledEnd
-			}
-		}
-
-		log.Printf("dispatcher.Dispatch: assigned task %s → staff=%s machine=%s start=%s",
-			task.ID, shift.StaffID, machineID, scheduledStart.Format(time.RFC3339))
+		d.assignSingleTask(ctx, nodeID, task, shifts, staffFreeAt, machines, machineFreeAt, now)
 	}
 
-	// [5] Fill-in assignment: assign QUEUED tasks vào idle windows của RETRIEVE tasks
-	// Non-fatal nếu lỗi — tasks chính đã được assign rồi
+	// [4] Fill-in assignment: RETRIEVE tasks da la PENDING -> idle windows da xac dinh.
+	// Candidates (QUEUED) duoc claim vao idle windows neu phu hop.
 	if err := d.assignFillInTasks(ctx, nodeID, shifts, staffFreeAt); err != nil {
 		log.Printf("dispatcher.Dispatch: assignFillInTasks warning: %v", err)
+	}
+
+	// [5] Pass 2: Assign QUEUED NORMAL tasks con lai.
+	// Reload de loai bo candidates da assign lam fill-in o buoc tren.
+	pass2Tasks, err := d.taskRepo.FindQueued(ctx, nodeID)
+	if err != nil {
+		log.Printf("dispatcher.Dispatch: reload queued tasks (pass 2): %v (continue)", err)
+		pass2Tasks = nil
+	}
+	for _, task := range pass2Tasks {
+		if task.TaskKind != models.TaskKindNormal {
+			continue
+		}
+		d.assignSingleTask(ctx, nodeID, task, shifts, staffFreeAt, machines, machineFreeAt, now)
 	}
 
 	return nil
 }
 
+// assignSingleTask co gang assign mot QUEUED task cho staff va machine.
+// Cap nhat staffFreeAt va machineFreeAt in-place khi assign thanh cong.
+func (d *dispatcher) assignSingleTask(
+	ctx context.Context,
+	nodeID string,
+	task *models.StaffTask,
+	shifts []*models.StaffShift,
+	staffFreeAt map[string]time.Time,
+	machines []*models.Machine,
+	machineFreeAt map[string]time.Time,
+	now time.Time,
+) bool {
+	step, err := d.sopRepo.FindStepByID(ctx, task.SOPStepID)
+	if err != nil {
+		log.Printf("dispatcher.assignSingleTask: load step %s: %v (skip)", task.SOPStepID, err)
+		return false
+	}
+	if step == nil {
+		log.Printf("dispatcher.assignSingleTask: step %s not found (skip task %s)", task.SOPStepID, task.ID)
+		return false
+	}
+
+	machineID, mFreeAt := d.pickMachine(machines, machineFreeAt, step, now)
+	shift, sFreeAt := d.pickStaff(shifts, staffFreeAt, step.EquipmentTypeID, now)
+	if shift == nil {
+		log.Printf("dispatcher.Dispatch: no available staff for queued task %s (node=%s, equipType=%v)",
+			task.ID, nodeID, step.EquipmentTypeID)
+		return false
+	}
+
+	depDoneAt := task.ScheduledStart
+	scheduledStart := maxTime(depDoneAt, mFreeAt, sFreeAt)
+	var scheduledEnd time.Time
+	if task.TaskKind == models.TaskKindSetup {
+		activeTime := 0
+		if step.ActiveTime != nil {
+			activeTime = *step.ActiveTime
+		}
+		scheduledEnd = scheduledStart.Add(time.Duration(activeTime) * time.Second)
+	} else if task.TaskKind == models.TaskKindRetrieve {
+		retrieveDuration := step.Duration
+		if step.ActiveTime != nil {
+			retrieveDuration -= *step.ActiveTime
+		}
+		scheduledEnd = scheduledStart.Add(time.Duration(retrieveDuration) * time.Second)
+	} else {
+		scheduledEnd = scheduledStart.Add(time.Duration(step.Duration) * time.Second)
+	}
+
+	task.AssignedTo = shift.StaffID
+	task.MachineID = machineID
+	task.Status = models.TaskPending
+	task.ScheduledStart = scheduledStart
+	task.ScheduledEnd = scheduledEnd
+
+	if err := d.taskRepo.Update(ctx, task); err != nil {
+		log.Printf("dispatcher.assignSingleTask: update task %s: %v (skip)", task.ID, err)
+		return false
+	}
+
+	staffFreeAt[shift.StaffID] = scheduledEnd
+	if machineID != "" {
+		if machineFreeAt[machineID].Before(scheduledEnd) {
+			machineFreeAt[machineID] = scheduledEnd
+		}
+	}
+
+	log.Printf("dispatcher.Dispatch: assigned task %s -> staff=%s machine=%s start=%s",
+		task.ID, shift.StaffID, machineID, scheduledStart.Format(time.RFC3339))
+	return true
+}
 // ─── pickMachine ─────────────────────────────────────────────────────────────
 
 // pickMachine tìm machine phù hợp cho step và trả về machineID + thời điểm nó rảnh.

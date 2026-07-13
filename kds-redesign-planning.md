@@ -188,7 +188,7 @@ Indexes: `po_id`, compound `(assigned_to, status)`, compound `(node_id, status)`
 
 ---
 
-## Block C — Scheduling Engine ← CORE ✅ APPROVED
+## Block C — Scheduling Engine ← CORE ✅ PARTIAL
 
 **File chạm:** `internal/usecase/`
 
@@ -198,7 +198,7 @@ Indexes: `po_id`, compound `(assigned_to, status)`, compound `(node_id, status)`
 > [!NOTE]
 > **Kế hoạch chi tiết đã được phê duyệt:** Xem [`C3 Scheduling Engine Plan.md`](file:///c:/Users/ADMIN/Documents/OneSystem/one-system-server/business_documents/plan/C3%20Scheduling%20Engine%20Plan.md) — bao gồm kiến trúc đầy đủ, 4 design decisions (D1–D4), và 23 test cases với expected results.
 
-### C.1 — `StaffShiftUseCase` (minimal)
+### C.1 — `StaffShiftUseCase` (minimal) ❌ PENDING
 
 **File mới:** `internal/usecase/staff_shift_usecase.go`
 
@@ -212,7 +212,7 @@ type StaffShiftUseCase interface {
 }
 ```
 
-### C.2 — `StaffTaskUseCase` (staff actions)
+### C.2 — `StaffTaskUseCase` (staff actions) ❌ PENDING
 
 **File mới:** `internal/usecase/staff_task_usecase.go`
 
@@ -229,7 +229,7 @@ type StaffTaskUseCase interface {
 }
 ```
 
-### C.3 — `SchedulingEngine` ← **Trọng điểm** ✅ APPROVED
+### C.3 — `SchedulingEngine` ← **Trọng điểm** ✅ DONE
 
 **File mới:** `internal/usecase/scheduling_engine.go`
 
@@ -331,7 +331,7 @@ Với mỗi step có is_idle_step = true:
    - candidate.ScheduledEnd = idleStart + sopStep.Duration (của candidate)
 ```
 
-### C.4 — Tích hợp vào `AllocationUseCase`
+### C.4 — Tích hợp vào `AllocationUseCase` ✅ DONE
 
 **File:** `internal/usecase/allocation_engine.go`
 
@@ -347,7 +347,7 @@ if !allSOPCompleted && uc.schedulingEngine != nil {
 > [!NOTE]
 > **Không sửa logic batch hiện tại.** Chỉ thêm scheduling engine call **sau** khi batch hoàn thành.
 
-### C.5 — Trigger `SchedulePO` khi PO → IN_PROGRESS
+### C.5 — Trigger `SchedulePO` khi PO → IN_PROGRESS ✅ DONE
 
 **File:** `internal/usecase/order_orchestrator.go` hoặc production usecase
 
@@ -357,7 +357,7 @@ Khi PO chuyển sang `IN_PROGRESS`, call `schedulingEngine.SchedulePO(ctx, po.ID
 
 ---
 
-## Block D — Staff KDS UI
+## Block D — Staff KDS UI ❌ PENDING
 
 **File mới:** `web/admin-ui/js/features/factory/staff_kds.js`
 
@@ -467,7 +467,7 @@ GET  /api/shifts?node_id=      → ListActiveShifts
 
 ---
 
-## Block E — Integration Test
+## Block E — Integration Test ❌ PENDING
 
 **File mới:** `test/integration/staff_task_flow_test.go`
 
