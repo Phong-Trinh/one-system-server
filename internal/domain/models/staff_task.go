@@ -81,8 +81,8 @@ const (
 //   - ParentTaskID != nil → đây là fill-in task
 //   - IsInterruptible = true → được phép dừng giữa chừng khi parent WAITING kết thúc
 type StaffTask struct {
-	ID        string `json:"id"`
-	POID      string `json:"po_id"`       // FK → ProductionOrder
+	ID   string `json:"id"`
+	POID string `json:"po_id"` // FK → ProductionOrder
 
 	// OrderItemID FK → OrderItem (item-level tracking, Section 6.5 spec).
 	// nil khi OrderItem model chưa được implement (Phase 2).
@@ -113,6 +113,10 @@ type StaffTask struct {
 
 	TargetQty     float64 `json:"target_qty"`     // Lượng target cần làm của PO (để tính thời gian/capacity)
 	RequiredSlots float64 `json:"required_slots"` // Dung lượng yêu cầu trên máy (TargetQty * SOPStep.SlotConsumption)
+	
+	// EstimatedDuration (giây) ghi đè SOPStep.Duration nếu task bị split hoặc thay đổi.
+	// Nếu nil, dùng SOPStep.Duration.
+	EstimatedDuration *int `json:"estimated_duration,omitempty"`
 
 	Status   TaskStatus `json:"status"`
 	Priority int        `json:"priority"` // Thứ tự trong queue (thấp = ưu tiên hơn)
@@ -130,6 +134,12 @@ type StaffTask struct {
 	// Parent task phải đang ở trạng thái WAITING.
 	// Scheduler set field này khi tìm được fill-in task phù hợp.
 	ParentTaskID *string `json:"parent_task_id,omitempty"` // FK → StaffTask
+
+	// RootTaskID trỏ về ID của StaffTask gốc trong trường hợp task này được chẻ ra (split)
+	// từ một task dài (Dynamic Timeboxing). 
+	// Nếu task không bị chẻ, RootTaskID có thể nil hoặc trỏ về chính nó.
+	// Giúp gom nhóm các mảnh vỡ (Sub-tasks và Remainders) để hiển thị báo cáo tiến độ trên UI.
+	RootTaskID *string `json:"root_task_id,omitempty"` // FK → StaffTask
 
 	// BatchIndex xác định thứ tự mẻ máy khi 1 SOPStep cần nhiều mẻ liên tiếp
 	// do TargetQty × SlotConsumption > machine.MaxCapacity.

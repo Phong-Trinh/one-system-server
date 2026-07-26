@@ -22,7 +22,16 @@ BA nghĩ rằng nhân viên có thể "đang nặn bò, lò kêu, rửa tay đi 
 *   **Cách hoạt động:** Giữ nguyên task 200 phút ở Database. Khi `Dispatcher` tìm thấy một khoảng thời gian rảnh (Idle Window) hợp lý (ví dụ 45 phút), nó sẽ:
     1. Kiểm tra: `IdleWindow (45m)` > `MinUsefulTime (15m)`? (Bỏ qua nếu thời gian rảnh quá ngắn).
     2. Cắt ra 45 phút của task bò để gán (Assign) vào window này.
-    3. Phần còn lại (155 phút) được hệ thống tự động sinh ra thành một task Remainder (Phần thừa) đưa lại vào Hàng Đợi (Queue) để lấp vào các window tiếp theo.
+    3. Phần còn lại (155 phút) được hệ thống tự động sinh ra thành một task Remainder (Phần thừa) đưa lại và
+    
+    
+    
+    
+    
+    
+    
+    
+    o Hàng Đợi (Queue) để lấp vào các window tiếp theo.
 *   **Tại sao tốt nhất?** Code nằm hoàn toàn gọn gàng trong thuật toán `assignFillInTasks`. Không phá vỡ UI, không làm rác DB từ ban đầu, và tôn trọng tuyệt đối thời gian chuyển đổi (Context Switching) của đời thực!
 *   **🌟 Lợi ích cốt lõi mở rộng (Multi-staff Collaboration):** Nhờ cơ chế đẩy task thừa (Remainder) ngược lại vào Global Queue ở bước 3, Hướng C **tự động giải quyết bài toán điều phối nhiều người cùng làm một việc**. Ví dụ: Staff A đang làm task Bò, Staff B đột nhiên rảnh. `Dispatcher` sẽ tự động nhặt phần Remainder từ Queue và tiếp tục dùng cơ chế Cắt (Split) để giao việc cho Staff B. Tiến độ được đẩy nhanh mà không cần tạo logic "Join/Group Task" phức tạp, tránh hoàn toàn xung đột dữ liệu (Data Race), và UI hiển thị cho từng cá nhân vô cùng tách bạch.
 

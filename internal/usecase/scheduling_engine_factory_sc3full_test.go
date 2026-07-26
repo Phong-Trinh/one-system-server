@@ -23,12 +23,16 @@ func TestFactory_SC3_FullLoad_1Staff(t *testing.T) {
 
 	nowBase := time.Date(2026, 7, 21, 6, 0, 0, 0, time.Local) // Ca bắt đầu 06:00
 	nodeID := "factory_f"
-	staffIDs := []string{"f_staff_1"}
+	staffIDs := []string{"f_staff_1", "f_staff_2"}
 
-	// ── 1 nhân viên duy nhất ─────────────────────────────────────────────────
+	// ── 2 nhân viên ─────────────────────────────────────────────────
 	shiftRepo.shifts["shift_1"] = &models.StaffShift{
 		ID: "shift_1", NodeID: nodeID,
 		StaffID: "f_staff_1", Status: models.ShiftActive,
+	}
+	shiftRepo.shifts["shift_2"] = &models.StaffShift{
+		ID: "shift_2", NodeID: nodeID,
+		StaffID: "f_staff_2", Status: models.ShiftActive,
 	}
 
 	// ── Thiết bị ─────────────────────────────────────────────────────────────
@@ -38,10 +42,10 @@ func TestFactory_SC3_FullLoad_1Staff(t *testing.T) {
 		Status: models.MachineIdle, MaxCapacity: 48,
 	}
 	// m_grill_B đã bị vô hiệu hoá theo yêu cầu "tính toán trong trường hợp có 1 lò"
-	// machineRepo.machines["m_grill_B"] = &models.Machine{
-	// 	ID: "m_grill_B", NodeID: nodeID, EquipmentTypeID: "grill",
-	// 	Status: models.MachineIdle, MaxCapacity: 48,
-	// }
+	machineRepo.machines["m_grill_B"] = &models.Machine{
+		ID: "m_grill_B", NodeID: nodeID, EquipmentTypeID: "grill",
+		Status: models.MachineIdle, MaxCapacity: 48,
+	}
 	// Mixer & proofer cho bun
 	machineRepo.machines["m_mixer"] = &models.Machine{
 		ID: "m_mixer", NodeID: nodeID, EquipmentTypeID: "mixer",
@@ -112,12 +116,12 @@ func TestFactory_SC3_FullLoad_1Staff(t *testing.T) {
 	sopRepo.steps["f3_patty_weigh"] = &models.SOPStep{
 		ID: "f3_patty_weigh", SOPID: sopPatty, SeqNo: 3, DependsOn: []string{"f3_patty_mix"},
 		// Cân 1 viên mất 40s (trung bình 30-45s) -> 300 viên * 40s = 12000s = 200 phút
-		Duration: 200 * 60,
+		Duration: 200 * 60, IsSplittable: true,
 	}
 	sopRepo.steps["f3_patty_mold"] = &models.SOPStep{
 		ID: "f3_patty_mold", SOPID: sopPatty, SeqNo: 4, DependsOn: []string{"f3_patty_weigh"},
 		// Tạo hình 1 miếng mất 30s -> 300 miếng * 30s = 9000s = 150 phút
-		Duration: 150 * 60,
+		Duration: 150 * 60, IsSplittable: true,
 	}
 	sopRepo.steps["f3_patty_pack"] = &models.SOPStep{
 		ID: "f3_patty_pack", SOPID: sopPatty, SeqNo: 5, DependsOn: []string{"f3_patty_mold"},

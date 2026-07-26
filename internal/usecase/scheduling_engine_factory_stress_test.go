@@ -180,8 +180,64 @@ func runFactorySimulation(
 				}
 			}
 
+			// Sort pending tasks:
+			// 1. Ready tasks (ScheduledStart <= currentTime) come before future tasks
+			// 2. Among ready tasks, sort by Priority (RETRIEVE > SETUP > NORMAL)
+			// 3. Among same priority, sort by ScheduledStart
 			sort.Slice(pendingTasks, func(i, j int) bool {
-				return pendingTasks[i].ScheduledStart.Before(pendingTasks[j].ScheduledStart)
+				tI := pendingTasks[i]
+				tJ := pendingTasks[j]
+				
+				// Calculate ready status
+				readyI := !currentTime.Before(tI.ScheduledStart)
+				if tI.TaskKind == models.TaskKindRetrieve {
+					readyI = !currentTime.Before(tI.ScheduledEnd)
+					// Check if SETUP has started
+					setupStarted := false
+					for _, tk2 := range tasks {
+						if tk2.TaskKind != models.TaskKindRetrieve && tk2.SOPStepID == tI.SOPStepID && tk2.BatchIndex == tI.BatchIndex && tk2.POID == tI.POID {
+							setupStarted = tk2.StartedAt != nil
+							break
+						}
+					}
+					if !setupStarted {
+						readyI = false
+					}
+				}
+				readyJ := !currentTime.Before(tJ.ScheduledStart)
+				if tJ.TaskKind == models.TaskKindRetrieve {
+					readyJ = !currentTime.Before(tJ.ScheduledEnd)
+					// Check if SETUP has started
+					setupStarted := false
+					for _, tk2 := range tasks {
+						if tk2.TaskKind != models.TaskKindRetrieve && tk2.SOPStepID == tJ.SOPStepID && tk2.BatchIndex == tJ.BatchIndex && tk2.POID == tJ.POID {
+							setupStarted = tk2.StartedAt != nil
+							break
+						}
+					}
+					if !setupStarted {
+						readyJ = false
+					}
+				}
+
+				if readyI != readyJ {
+					return readyI // ready task comes first
+				}
+				
+				if readyI && readyJ {
+					// Both ready, sort by priority
+					pI := 1
+					pJ := 1
+					if tI.TaskKind == models.TaskKindRetrieve { pI = 3 } else if tI.TaskKind == models.TaskKindSetup { pI = 2 }
+					if tJ.TaskKind == models.TaskKindRetrieve { pJ = 3 } else if tJ.TaskKind == models.TaskKindSetup { pJ = 2 }
+					
+					if pI != pJ {
+						return pI > pJ
+					}
+				}
+				
+				// Fallback to ScheduledStart
+				return tI.ScheduledStart.Before(tJ.ScheduledStart)
 			})
 			if vTime == 0 {
 				for _, tk := range pendingTasks {
@@ -199,6 +255,9 @@ func runFactorySimulation(
 				switch activeTask.TaskKind {
 				case models.TaskKindNormal:
 					duration = time.Duration(step.Duration) * time.Second
+					if activeTask.EstimatedDuration != nil {
+						duration = time.Duration(*activeTask.EstimatedDuration) * time.Second
+					}
 				case models.TaskKindFillIn:
 					// FILL-IN từ task SETUP: nhân viên chỉ mất ActiveTime để thao tác,
 					// sau đó máy tự chạy — nhân viên được rời đi.
@@ -207,6 +266,9 @@ func runFactorySimulation(
 						duration = time.Duration(*step.ActiveTime) * time.Second
 					} else {
 						duration = time.Duration(step.Duration) * time.Second
+						if activeTask.EstimatedDuration != nil {
+							duration = time.Duration(*activeTask.EstimatedDuration) * time.Second
+						}
 					}
 				case models.TaskKindSetup:
 					if step.ActiveTime != nil {
@@ -231,12 +293,27 @@ func runFactorySimulation(
 						"✅ %s hoàn thành: %s (Qty: %.0f)",
 						staff, resolveFactoryStepName(activeTask), activeTask.TargetQty))
 
+					if activeTask.TaskKind != models.TaskKindRetrieve {
+						// Find the retrieve task and update its ScheduledEnd
+						for _, t := range tasks {
+							if t.TaskKind == models.TaskKindRetrieve && t.SOPStepID == activeTask.SOPStepID && t.BatchIndex == activeTask.BatchIndex && t.POID == activeTask.POID {
+								step := sopRepo.steps[activeTask.SOPStepID]
+								if step != nil {
+									bakeDur := time.Duration(step.Duration) * time.Second
+									newEnd := activeTask.StartedAt.Add(bakeDur)
+									t.ScheduledEnd = newEnd
+								}
+								break
+							}
+						}
+					}
+
 					// Giải phóng máy nếu RETRIEVE hoặc NORMAL
 					if activeTask.MachineID != "" {
 						if activeTask.TaskKind == models.TaskKindRetrieve ||
 							activeTask.TaskKind == models.TaskKindNormal {
 							if m, ok := machineRepo.machines[activeTask.MachineID]; ok {
-								m.CurrentBatchID = nil
+								m.CurrentBatchID = nil; logSim(vTime, "🔓 RELEASE machine " + activeTask.MachineID)
 							}
 						}
 					}
@@ -251,11 +328,17 @@ func runFactorySimulation(
 					if tk.Status != models.TaskPending {
 						continue
 					}
-					if currentTime.Before(tk.EarliestStart) {
-						if tk.SOPStepID == "f3_bun_bake" && tk.MachineID == "m_grill_B" && tk.TaskKind == models.TaskKindSetup {
-							logSim(vTime, fmt.Sprintf("SKIP %s at %s because EarliestStart is %s", tk.SOPStepID, currentTime.Format("15:04"), tk.EarliestStart.Format("15:04")))
+					
+					// RETRIEVE tasks actually represent the machine's processing time. 
+					// The staff should only execute them at the end of the idle window (ScheduledEnd).
+					if tk.TaskKind == models.TaskKindRetrieve {
+						if currentTime.Before(tk.ScheduledEnd) {
+							continue
 						}
-						continue
+					} else {
+						if currentTime.Before(tk.ScheduledStart) {
+							continue
+						}
 					}
 
 					// Kiểm tra dependencies đã hoàn thành chưa (nếu còn trong pendingTasks nghĩa là chưa xong)
@@ -270,15 +353,49 @@ func runFactorySimulation(
 								}
 							}
 							if !depsDone {
+if vTime >= 174 && tk.TaskKind == models.TaskKindSetup && tk.TargetQty == 8 { logSim(vTime, "Blocked by deps: " + fmt.Sprintf("%v", step.DependsOn)) }
+
 								break
 							}
 						}
 					}
 					if !depsDone {
+if vTime >= 174 && tk.TaskKind == models.TaskKindSetup && tk.TargetQty == 8 { logSim(vTime, "Blocked by deps: " + fmt.Sprintf("%v", step.DependsOn)) }
+
 						continue
 					}
+					// Machine capacity check
+					if tk.MachineID != "" {
+						if m, ok := machineRepo.machines[tk.MachineID]; ok {
+							// Default required slots is TargetQty * SlotConsumption
+							// Check if machine is full (for simplicity in simulator, we just check if it's currently baking anything else for non-FILL-IN tasks)
+							// Actually, to be precise, the simulator should track `CurrentUsedSlots`.
+							// For this test, if CurrentBatchID != nil, we just assume it's full (unless it's a FILL-IN and we implement complex slot tracking).
+							// Since SC3 has only 1 oven and we bake 48, it's always full.
+							if tk.TaskKind == models.TaskKindSetup {
+if tk.SOPStepID == "f3_bun_bake" { logSim(vTime, "Check SETUP: Qty=" + fmt.Sprintf("%v", tk.TargetQty) + ", CurrentBatch=" + fmt.Sprintf("%v", m.CurrentBatchID)) }
+
+								if m.CurrentBatchID != nil {
+									continue // wait until machine is free
+								}
+							}
+						}
+					}
+
 					// RETRIEVE chỉ bắt đầu khi gần đến giờ lấy
 					if tk.TaskKind == models.TaskKindRetrieve {
+						// Check if SETUP has started
+						setupStarted := false
+						for _, tk2 := range tasks {
+							if tk2.TaskKind != models.TaskKindRetrieve && tk2.SOPStepID == tk.SOPStepID && tk2.BatchIndex == tk.BatchIndex && tk2.POID == tk.POID {
+								setupStarted = tk2.StartedAt != nil
+								break
+							}
+						}
+						if !setupStarted {
+							continue
+						}
+
 						step := sopRepo.steps[tk.SOPStepID]
 						reqAtt := 0
 						if step != nil && step.RequiresAttentionAt != nil {
@@ -293,6 +410,14 @@ func runFactorySimulation(
 					tk.Status = models.TaskActive
 					st := currentTime
 					tk.StartedAt = &st
+					
+					// Acquire machine
+					if tk.MachineID != "" && tk.TaskKind == models.TaskKindSetup {
+						if m, ok := machineRepo.machines[tk.MachineID]; ok {
+							batchID := "batch_" + tk.ID
+							m.CurrentBatchID = &batchID; logSim(vTime, "🔒 ACQUIRE machine " + tk.MachineID + " for " + batchID)
+						}
+					}
 					
 					logSim(vTime, fmt.Sprintf(
 						"▶️  %s bắt đầu: %s (Qty: %.0f, Máy: %s, Step: %s, ID: %s)",

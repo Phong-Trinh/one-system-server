@@ -65,17 +65,17 @@ type SOP struct {
 // into tasks, each task's required station type comes from this field.
 // Steps may be parallelised using the depends_on DAG.
 type SOPStep struct {
-	ID            string   `json:"id"`                        // Unique identifier
-	SOPID         string   `json:"sop_id"`                    // FK → SOP
-	SeqNo         int      `json:"seq_no"`                    // Sequence number (execution order)
-	DependsOn     []string `json:"depends_on"`                // IDs of steps that must complete before this one (DAG)
+	ID              string   `json:"id"`                          // Unique identifier
+	SOPID           string   `json:"sop_id"`                      // FK → SOP
+	SeqNo           int      `json:"seq_no"`                      // Sequence number (execution order)
+	DependsOn       []string `json:"depends_on"`                  // IDs of steps that must complete before this one (DAG)
 	EquipmentTypeID *string  `json:"equipment_type_id,omitempty"` // FK → EquipmentType — nil for manual/non-machine steps
 	// IngredientBOMLineIDs lists the BOMLine IDs for ingredients consumed or added in this step.
 	// Drives per-step material tracking and cost attribution.
 	IngredientBOMLineIDs []string `json:"ingredient_bom_line_ids"`
-	Duration             int      `json:"duration"`     // Estimated duration in seconds
-	Description          string   `json:"description"`  // Human-readable instruction for staff
-	
+	Duration             int      `json:"duration"`    // Estimated duration in seconds
+	Description          string   `json:"description"` // Human-readable instruction for staff
+
 	// Bin-packing inputs — defined at SOP authoring time, stored on the step itself.
 	// slot_consumption: how many capacity units one batch unit requires on the assigned machine.
 	// allow_mix: if false, the machine must be dedicated to this item type for the entire cycle.
@@ -104,6 +104,14 @@ type SOPStep struct {
 	// Scheduler dùng để tính: idle_end = scheduled_end - RequiresAttentionAt
 	// Alert sequence: T-2:00, T-0:45, T-0:00 tính từ scheduled_end - RequiresAttentionAt.
 	RequiresAttentionAt *int `json:"requires_attention_at,omitempty"`
+	
+	// IsSplittable xác định bước này có thể bị chẻ nhỏ thành nhiều mảnh không.
+	// Ví dụ: Nặn bò (có thể cắt), Nướng bánh (nguyên khối, không thể cắt).
+	IsSplittable bool `json:"is_splittable"`
+
+	// MinUsefulTime là thời gian tối thiểu (bằng giây) có ý nghĩa để làm bước này.
+	// Chỉ áp dụng khi IsSplittable = true. Nếu nil, Dispatcher sẽ dùng Global Config.
+	MinUsefulTime *int `json:"min_useful_time,omitempty"`
 }
 
 // ─── Production Order ─────────────────────────────────────────────────────────
@@ -125,24 +133,25 @@ const (
 // It captures what is being produced, where, by whom, and at what cost.
 //
 // Status transitions:
-//   PENDING → IN_PROGRESS: requires all BOM ingredients to have sufficient NodeStock.qty_on_hand.
-//   If any ingredient is short, the PO stays PENDING and the manager is notified.
-//   The PO auto-resumes when replenishment stock arrives.
 //
-//   IN_PROGRESS → COMPLETED: all child ProductionBatches are COMPLETED.
-//   POCostRecord is written and locked at this transition.
+//	PENDING → IN_PROGRESS: requires all BOM ingredients to have sufficient NodeStock.qty_on_hand.
+//	If any ingredient is short, the PO stays PENDING and the manager is notified.
+//	The PO auto-resumes when replenishment stock arrives.
+//
+//	IN_PROGRESS → COMPLETED: all child ProductionBatches are COMPLETED.
+//	POCostRecord is written and locked at this transition.
 type ProductionOrder struct {
-	ID             string     `json:"id"`
-	ItemID         string     `json:"item_id"`       // FK → Item (the target item being produced)
-	BOMID          string     `json:"bom_id"`        // FK → BOM
-	SOPID          string     `json:"sop_id"`        // FK → SOP
-	NodeID         string     `json:"node_id"`       // FK → Node (where production happens)
+	ID               string   `json:"id"`
+	ItemID           string   `json:"item_id"`                      // FK → Item (the target item being produced)
+	BOMID            string   `json:"bom_id"`                       // FK → BOM
+	SOPID            string   `json:"sop_id"`                       // FK → SOP
+	NodeID           string   `json:"node_id"`                      // FK → Node (where production happens)
 	ReferenceOrderID string   `json:"reference_order_id,omitempty"` // FK → Order (the POS order that triggered this)
-	TargetQty      float64    `json:"target_qty"`    // Units to produce (in base unit)
-	YieldRate      float64    `json:"yield_rate"`    // Expected yield ratio (e.g., 0.95 = 95% expected output)
-	PlannedInput   float64    `json:"planned_input"` // target_qty / yield_rate — raw input units needed
-	ActualOutput   float64    `json:"actual_output"` // Recorded at completion — enables yield tracking
-	Status         POStatus   `json:"status"`
+	TargetQty        float64  `json:"target_qty"`                   // Units to produce (in base unit)
+	YieldRate        float64  `json:"yield_rate"`                   // Expected yield ratio (e.g., 0.95 = 95% expected output)
+	PlannedInput     float64  `json:"planned_input"`                // target_qty / yield_rate — raw input units needed
+	ActualOutput     float64  `json:"actual_output"`                // Recorded at completion — enables yield tracking
+	Status           POStatus `json:"status"`
 	// DeadlineAt is the customer-facing SLA deadline for KDS priority scoring.
 	// If nil, the system uses CreatedAt + node-level MaxPoolWaitSeconds config.
 	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`
@@ -164,7 +173,8 @@ type BOMSnapshot struct {
 
 // POStaffAssignment records staff members assigned to a ProductionOrder and hours worked.
 // Used for labor cost calculation in POCostRecord.
-//   labor_cost = Σ (hours × Staff.wage_rate)
+//
+//	labor_cost = Σ (hours × Staff.wage_rate)
 type POStaffAssignment struct {
 	POID    string  `json:"po_id"`    // FK → ProductionOrder
 	StaffID string  `json:"staff_id"` // FK → Staff
@@ -195,19 +205,20 @@ const (
 //   - the item has allow_mix=false and cannot share the machine with other item types.
 //
 // Lifecycle:
-//   QUEUED → ALLOCATED  (system finds an IDLE machine; Machine.current_batch_id set)
-//   ALLOCATED → IN_PROGRESS  (staff confirms item placement)
-//   IN_PROGRESS → COMPLETED  (staff confirms completion; StockConsumption written; Machine → IDLE)
-//   IN_PROGRESS → FAILED     (machine fault; Machine → IDLE; batch optionally re-queued)
+//
+//	QUEUED → ALLOCATED  (system finds an IDLE machine; Machine.current_batch_id set)
+//	ALLOCATED → IN_PROGRESS  (staff confirms item placement)
+//	IN_PROGRESS → COMPLETED  (staff confirms completion; StockConsumption written; Machine → IDLE)
+//	IN_PROGRESS → FAILED     (machine fault; Machine → IDLE; batch optionally re-queued)
 type ProductionBatch struct {
-	ID        string      `json:"id"`
-	POID      string      `json:"po_id"`       // FK → ProductionOrder
-	SOPStepID string      `json:"sop_step_id"` // FK → SOPStep (the step this batch executes)
-	NodeID    string      `json:"node_id"`     // FK → Node (where the machine lives)
-	MachineID string      `json:"machine_id"`  // FK → Machine (the physical machine assigned)
-	ReferenceOrderID string `json:"reference_order_id,omitempty"` // FK → Order
-	ItemID    string      `json:"item_id"`     // Single item type processed in this batch
-	Qty       float64     `json:"qty"`         // Units in this batch (base unit)
+	ID               string  `json:"id"`
+	POID             string  `json:"po_id"`                        // FK → ProductionOrder
+	SOPStepID        string  `json:"sop_step_id"`                  // FK → SOPStep (the step this batch executes)
+	NodeID           string  `json:"node_id"`                      // FK → Node (where the machine lives)
+	MachineID        string  `json:"machine_id"`                   // FK → Machine (the physical machine assigned)
+	ReferenceOrderID string  `json:"reference_order_id,omitempty"` // FK → Order
+	ItemID           string  `json:"item_id"`                      // Single item type processed in this batch
+	Qty              float64 `json:"qty"`                          // Units in this batch (base unit)
 	// SlotsUsed = Qty × SOPStep.SlotConsumption — must not exceed Machine.max_capacity.
 	SlotsUsed float64     `json:"slots_used"`
 	Status    BatchStatus `json:"status"`
