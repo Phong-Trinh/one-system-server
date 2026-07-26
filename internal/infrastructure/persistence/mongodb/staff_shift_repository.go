@@ -22,7 +22,6 @@ type staffShiftDoc struct {
 	ID         string              `bson:"_id"`
 	StaffID    string              `bson:"staff_id"`
 	NodeID     string              `bson:"node_id"`
-	StationID  *string             `bson:"station_id,omitempty"` // FK → EquipmentType
 	ShiftStart time.Time           `bson:"shift_start"`
 	ShiftEnd   *time.Time          `bson:"shift_end,omitempty"`
 	ActualEnd  *time.Time          `bson:"actual_end,omitempty"` // set khi EndShift sớm
@@ -35,7 +34,6 @@ func shiftToDoc(s *models.StaffShift) *staffShiftDoc {
 		ID:         s.ID,
 		StaffID:    s.StaffID,
 		NodeID:     s.NodeID,
-		StationID:  s.StationID,
 		ShiftStart: s.ShiftStart,
 		ShiftEnd:   s.ShiftEnd,
 		ActualEnd:  s.ActualEnd,
@@ -49,7 +47,6 @@ func docToShift(d *staffShiftDoc) *models.StaffShift {
 		ID:         d.ID,
 		StaffID:    d.StaffID,
 		NodeID:     d.NodeID,
-		StationID:  d.StationID,
 		ShiftStart: d.ShiftStart,
 		ShiftEnd:   d.ShiftEnd,
 		ActualEnd:  d.ActualEnd,
@@ -101,7 +98,7 @@ func (r *staffShiftRepository) FindByID(ctx context.Context, id string) (*models
 }
 
 // FindActiveByNode trả về tất cả ca đang ACTIVE tại một node.
-// SchedulingEngine gọi hàm này để biết ai đang available và đứng station nào.
+// SchedulingEngine gọi hàm này để biết ai đang available.
 func (r *staffShiftRepository) FindActiveByNode(ctx context.Context, nodeID string) ([]*models.StaffShift, error) {
 	filter := bson.M{
 		"node_id": nodeID,

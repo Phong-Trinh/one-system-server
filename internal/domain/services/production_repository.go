@@ -90,18 +90,22 @@ type ProductionBatchRepository interface {
 // StaffShiftRepository defines persistence operations for StaffShift.
 // Đây là nguồn sự thật để SchedulingEngine biết:
 //   - Ai đang có mặt trong ca (status = ACTIVE)
-//   - Mỗi người đứng station nào (station_id → EquipmentType)
 //   - Thời gian scheduling horizon (shift_start → shift_end)
 type StaffShiftRepository interface {
 	Create(ctx context.Context, s *models.StaffShift) error
 	FindByID(ctx context.Context, id string) (*models.StaffShift, error)
 
 	// FindActiveByNode trả về tất cả ca đang ACTIVE tại một node.
-	// SchedulingEngine dùng để lấy danh sách staff available và station của họ.
+	// SchedulingEngine dùng để lấy danh sách staff available.
 	FindActiveByNode(ctx context.Context, nodeID string) ([]*models.StaffShift, error)
 
 	// FindByStaff trả về lịch sử ca của một staff (dùng để kiểm tra có active shift không).
 	FindByStaff(ctx context.Context, staffID string) ([]*models.StaffShift, error)
+
+	// FindActiveShiftByStaff tìm ca đang ACTIVE của một staff cụ thể.
+	// Dùng trong StartShift (để validate không có ca đang chạy) và EndShift (để ENDED đúng ca).
+	// Trả về nil nếu không có ca nào đang ACTIVE.
+	FindActiveShiftByStaff(ctx context.Context, staffID string) (*models.StaffShift, error)
 
 	// UpdateStatus cập nhật trạng thái ca và actual_end nếu cần.
 	// Dùng khi nhân viên kết thúc ca (chuẩn hoặc sớm).

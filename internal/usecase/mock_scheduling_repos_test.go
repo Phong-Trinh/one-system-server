@@ -1,4 +1,4 @@
-package usecase_test
+package usecase
 
 import (
 	"context"
@@ -155,7 +155,18 @@ func (m *mockStaffShiftRepo) FindActiveByNode(ctx context.Context, nodeID string
 func (m *mockStaffShiftRepo) FindByStaff(ctx context.Context, staffID string) ([]*models.StaffShift, error) {
 	return nil, nil
 }
+func (m *mockStaffShiftRepo) FindActiveShiftByStaff(ctx context.Context, staffID string) (*models.StaffShift, error) {
+	for _, s := range m.shifts {
+		if s.StaffID == staffID && s.Status == models.ShiftActive {
+			return s, nil
+		}
+	}
+	return nil, nil
+}
 func (m *mockStaffShiftRepo) UpdateStatus(ctx context.Context, id string, status models.ShiftStatus, actualEnd *time.Time) error {
+	if s, ok := m.shifts[id]; ok {
+		s.Status = status
+	}
 	return nil
 }
 

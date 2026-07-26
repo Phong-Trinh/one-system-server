@@ -21,22 +21,18 @@ const (
 // StaffShift ghi nhận ca làm việc của một nhân viên tại một node.
 // Scheduler dùng model này để biết:
 //   - Ai đang available (Status = ACTIVE)
-//   - Ai đứng station nào (StationID → EquipmentType)
 //   - Thời gian ca để tính scheduling horizon
 //
 // Quan hệ với StaffTask:
 //   - Mỗi StaffTask.AssignedTo phải là StaffID của một shift đang ACTIVE
 //   - Khi shift ENDED: scheduler tự unassign các PENDING tasks của nhân viên đó
+//
+// MVP note: Staff là Flexible Runner — không gán cứng vào trạm cụ thể.
+// Dispatcher sẽ assign task căn cứ vào availability (freeAt), không phải station.
 type StaffShift struct {
 	ID         string      `json:"id"`
 	StaffID    string      `json:"staff_id"` // FK → Staff
 	NodeID     string      `json:"node_id"`  // FK → Node (nơi làm việc)
-
-	// StationID xác định nhân viên này đứng station nào trong ca.
-	// Scheduler dùng để filter: chỉ assign step có equipment_type_id == StationID cho nhân viên này.
-	// nil = nhân viên linh hoạt (có thể assign bất kỳ station nào).
-	// TODO (Phase 2): Nếu nil, scheduler cần strategy khác (e.g. by skill set).
-	StationID  *string     `json:"station_id,omitempty"` // FK → EquipmentType
 
 	ShiftStart time.Time   `json:"shift_start"`
 	ShiftEnd   *time.Time  `json:"shift_end,omitempty"`   // Giờ kết thúc dự kiến

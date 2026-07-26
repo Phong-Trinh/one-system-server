@@ -97,6 +97,11 @@ type StaffTask struct {
 	// FILL_IN: task chèn vào idle window (ParentTaskID != nil).
 	TaskKind TaskKind `json:"task_kind"`
 
+	// OriginalKind lưu TaskKind gốc khi task được tạo (SETUP hoặc NORMAL).
+	// Chỉ có ý nghĩa khi TaskKind = FILL_IN — giúp tính đúng thời gian nhân viên
+	// thực tế (FILL-IN từ SETUP chỉ mất ActiveTime, không phải toàn bộ Duration).
+	OriginalKind TaskKind `json:"original_kind,omitempty"`
+
 	// AssignedTo là staff_id của nhân viên được phân công.
 	// "" = chưa được assign (task đang QUEUED, chờ Dispatcher).
 	// Dispatcher set field này; nhân viên không tự chọn task.
@@ -106,6 +111,9 @@ type StaffTask struct {
 	// "" = step không cần máy (manual step) hoặc task đang QUEUED.
 	MachineID string `json:"machine_id"` // FK → Machine, "" = manual step
 
+	TargetQty     float64 `json:"target_qty"`     // Lượng target cần làm của PO (để tính thời gian/capacity)
+	RequiredSlots float64 `json:"required_slots"` // Dung lượng yêu cầu trên máy (TargetQty * SOPStep.SlotConsumption)
+
 	Status   TaskStatus `json:"status"`
 	Priority int        `json:"priority"` // Thứ tự trong queue (thấp = ưu tiên hơn)
 
@@ -114,10 +122,21 @@ type StaffTask struct {
 	// Luôn = true với fill-in tasks. Luôn = false với task chính.
 	IsInterruptible bool `json:"is_interruptible"`
 
+	// IsCritical = true nghĩa là task này là prerequisite (trực tiếp hoặc gián tiếp)
+	// cho một SETUP task. Cần ưu tiên xếp lịch sớm (Pass 1) để không làm delay máy.
+	IsCritical bool `json:"is_critical"`
+
 	// ParentTaskID != nil → đây là fill-in task được chèn vào idle window của parent.
 	// Parent task phải đang ở trạng thái WAITING.
 	// Scheduler set field này khi tìm được fill-in task phù hợp.
 	ParentTaskID *string `json:"parent_task_id,omitempty"` // FK → StaffTask
+
+	// BatchIndex xác định thứ tự mẻ máy khi 1 SOPStep cần nhiều mẻ liên tiếp
+	// do TargetQty × SlotConsumption > machine.MaxCapacity.
+	// BatchIndex=0 = mẻ đầu tiên. Mặc định = 0 (đủ 1 mẻ hoặc step không dùng máy).
+	// SETUP[i] và RETRIEVE[i] có cùng BatchIndex.
+	// SETUP[i+1].EarliestStart = RETRIEVE[i].ScheduledEnd.
+	BatchIndex int `json:"batch_index"`
 
 	// Scheduling timestamps (set bởi SchedulingEngine)
 	// EarliestStart là thời điểm sớm nhất có thể bắt đầu (dựa trên Dependencies DAG).

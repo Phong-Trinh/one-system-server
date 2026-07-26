@@ -57,6 +57,7 @@ type schedulingEngine struct {
 	poRepo     services.ProductionOrderRepository
 	sopRepo    services.SOPRepository
 	taskRepo   services.StaffTaskRepository
+	machineRepo services.MachineRepository
 	dispatcher Dispatcher
 	now        func() time.Time // injectable cho testing
 }
@@ -67,14 +68,16 @@ func NewSchedulingEngine(
 	poRepo services.ProductionOrderRepository,
 	sopRepo services.SOPRepository,
 	taskRepo services.StaffTaskRepository,
+	machineRepo services.MachineRepository,
 	dispatcher Dispatcher,
 ) SchedulingEngine {
 	return &schedulingEngine{
-		poRepo:     poRepo,
-		sopRepo:    sopRepo,
-		taskRepo:   taskRepo,
-		dispatcher: dispatcher,
-		now:        time.Now,
+		poRepo:      poRepo,
+		sopRepo:     sopRepo,
+		taskRepo:    taskRepo,
+		machineRepo: machineRepo,
+		dispatcher:  dispatcher,
+		now:         time.Now,
 	}
 }
 
@@ -125,11 +128,37 @@ func (e *schedulingEngine) SchedulePO(ctx context.Context, poID string) ([]*mode
 	var createdTasks []*models.StaffTask
 	groupStart := now
 
+	// Build reverse dependencies to find ancestors of IsIdleStep
+	revDeps := make(map[string][]string)
+	for _, step := range stepsToSchedule {
+		for _, dep := range step.DependsOn {
+			revDeps[step.ID] = append(revDeps[step.ID], dep)
+		}
+	}
+	criticalStepIDs := make(map[string]bool)
+	var queue []string
+	for _, step := range stepsToSchedule {
+		if step.IsIdleStep {
+			queue = append(queue, step.ID)
+		}
+	}
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		for _, parent := range revDeps[curr] {
+			if !criticalStepIDs[parent] {
+				criticalStepIDs[parent] = true
+				queue = append(queue, parent)
+			}
+		}
+	}
+
 	for _, group := range topoGroups {
 		groupMaxEnd := groupStart
 		for _, step := range group {
 			stepCopy := step // avoid loop variable capture
-			tasks := e.buildQueuedTasks(po, &stepCopy, groupStart)
+			isCritical := criticalStepIDs[step.ID]
+			tasks := e.buildQueuedTasks(ctx, po, &stepCopy, groupStart, isCritical)
 			for _, t := range tasks {
 				if err := e.taskRepo.Create(ctx, t); err != nil {
 					return nil, fmt.Errorf("schedulingEngine.SchedulePO: create task: %w", err)
@@ -173,13 +202,31 @@ func (e *schedulingEngine) RescheduleOnShiftChange(ctx context.Context, nodeID s
 
 // ─── buildQueuedTasks ────────────────────────────────────────────────────────
 
-// buildQueuedTasks tạo 1 hoặc 2 QUEUED tasks từ một SOPStep.
-// - Normal step (is_idle_step=false): 1 task (TaskKindNormal)
-// - Idle step (is_idle_step=true): 2 tasks (TaskKindSetup + TaskKindRetrieve)
-//
-// ScheduledStart/End ở đây là estimate; Dispatcher sẽ recalculate khi assign.
-func (e *schedulingEngine) buildQueuedTasks(po *models.ProductionOrder, step *models.SOPStep, depDoneAt time.Time) []*models.StaffTask {
+// bestMachineCapacity tìm máy có MaxCapacity lớn nhất cho một EquipmentType tại node.
+func (e *schedulingEngine) bestMachineCapacity(ctx context.Context, nodeID string, equipTypeID *string) float64 {
+	if equipTypeID == nil {
+		return 0
+	}
+	machines, err := e.machineRepo.FindByNodeID(ctx, nodeID)
+	if err != nil {
+		return 0
+	}
+	var maxCap float64
+	for _, m := range machines {
+		if m.EquipmentTypeID == *equipTypeID && m.MaxCapacity > maxCap {
+			maxCap = m.MaxCapacity
+		}
+	}
+	return maxCap
+}
+
+// buildQueuedTasks tạo 1 hoặc nhiều QUEUED tasks từ một SOPStep.
+// - Normal step: 1 task
+// - Idle step: 1 hoặc nhiều cặp SETUP+RETRIEVE (tùy theo capacity).
+func (e *schedulingEngine) buildQueuedTasks(ctx context.Context, po *models.ProductionOrder, step *models.SOPStep, depDoneAt time.Time, isCritical bool) []*models.StaffTask {
 	now := e.now()
+	reqSlots := po.TargetQty * step.SlotConsumption
+
 	if !step.IsIdleStep {
 		// Normal task
 		t := &models.StaffTask{
@@ -190,9 +237,12 @@ func (e *schedulingEngine) buildQueuedTasks(po *models.ProductionOrder, step *mo
 			TaskKind:        models.TaskKindNormal,
 			AssignedTo:      "",
 			MachineID:       "",
+			TargetQty:       po.TargetQty,
+			RequiredSlots:   reqSlots,
 			Status:          models.TaskQueued,
 			Priority:        step.SeqNo,
 			IsInterruptible: false,
+			IsCritical:      isCritical,
 			EarliestStart:   depDoneAt,
 			ScheduledStart:  depDoneAt,
 			ScheduledEnd:    depDoneAt.Add(time.Duration(step.Duration) * time.Second),
@@ -201,7 +251,54 @@ func (e *schedulingEngine) buildQueuedTasks(po *models.ProductionOrder, step *mo
 		return []*models.StaffTask{t}
 	}
 
-	// Idle step — split thành SETUP + RETRIEVE
+	// Idle step
+	maxCap := e.bestMachineCapacity(ctx, po.NodeID, step.EquipmentTypeID)
+	
+	// Nếu không có MaxCapacity hoặc không dùng slot, fallback 1 batch
+	if maxCap <= 0 || step.SlotConsumption <= 0 || reqSlots <= maxCap {
+		return e.buildBatchedIdleTasks(po, step, depDoneAt, isCritical, po.TargetQty, 0, 1)
+	}
+
+	// Tính số mẻ cần thiết
+	batchQty := maxCap / step.SlotConsumption
+	if batchQty <= 0 {
+		batchQty = 1 // fallback an toàn
+	}
+	numBatches := int(po.TargetQty / batchQty)
+	if float64(numBatches)*batchQty < po.TargetQty {
+		numBatches++
+	}
+
+	var allTasks []*models.StaffTask
+	currentDepDone := depDoneAt
+
+	for i := 0; i < numBatches; i++ {
+		qty := batchQty
+		if i == numBatches-1 {
+			qty = po.TargetQty - float64(i)*batchQty
+		}
+		batchTasks := e.buildBatchedIdleTasks(po, step, currentDepDone, isCritical, qty, i, numBatches)
+		allTasks = append(allTasks, batchTasks...)
+		// Batch tiếp theo có thể bắt đầu setup ngay sau khi batch trước setup xong (chờ nhân viên rảnh)
+		// Dispatcher sẽ lo việc check xem máy có rảnh hay không (mFreeAt).
+		currentDepDone = batchTasks[0].ScheduledEnd 
+	}
+
+	return allTasks
+}
+
+// buildBatchedIdleTasks sinh 1 cặp SETUP+RETRIEVE cho 1 mẻ máy.
+func (e *schedulingEngine) buildBatchedIdleTasks(
+	po *models.ProductionOrder,
+	step *models.SOPStep,
+	depDoneAt time.Time,
+	isCritical bool,
+	batchQty float64,
+	batchIndex int,
+	totalBatches int,
+) []*models.StaffTask {
+	now := e.now()
+	reqSlots := batchQty * step.SlotConsumption
 	activeTime := 0
 	if step.ActiveTime != nil {
 		activeTime = *step.ActiveTime
@@ -218,9 +315,13 @@ func (e *schedulingEngine) buildQueuedTasks(po *models.ProductionOrder, step *mo
 		TaskKind:       models.TaskKindSetup,
 		AssignedTo:     "",
 		MachineID:      "",
+		TargetQty:      batchQty,
+		RequiredSlots:  reqSlots,
 		Status:         models.TaskQueued,
 		Priority:       step.SeqNo,
 		IsInterruptible: false,
+		BatchIndex:     batchIndex,
+		EarliestStart:  depDoneAt,
 		ScheduledStart: depDoneAt,
 		ScheduledEnd:   setupEnd,
 		CreatedAt:      now,
@@ -234,10 +335,14 @@ func (e *schedulingEngine) buildQueuedTasks(po *models.ProductionOrder, step *mo
 		TaskKind:       models.TaskKindRetrieve,
 		AssignedTo:     "",
 		MachineID:      "",
+		TargetQty:      batchQty,
+		RequiredSlots:  reqSlots,
 		Status:         models.TaskQueued,
 		Priority:       step.SeqNo,
 		IsInterruptible: false,
 		ParentTaskID:   nil, // Dispatcher set khi assign fill-in task
+		BatchIndex:     batchIndex,
+		EarliestStart:  setupEnd,
 		ScheduledStart: setupEnd,
 		ScheduledEnd:   stepEnd,
 		CreatedAt:      now,

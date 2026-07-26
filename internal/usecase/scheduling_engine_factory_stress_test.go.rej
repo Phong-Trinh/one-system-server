@@ -1,0 +1,10 @@
+@@ -194,6 +194,9 @@
+ 		panic(err)
+ 	}
+ 
++	for _, t := range taskRepo.tasks {
++		fmt.Printf("TASK_DUMP: SOPStepID=%s Kind=%v Status=%v CreatedAt=%v ID=%s\n", t.SOPStepID, t.TaskKind, t.Status, t.CreatedAt, t.ID)
++	}
+ 	// CHẠY DISPATCH LẦN ĐẦU (PO mới vào)
+ 	disp.Dispatch(t.Context(), nodeID)
+ 

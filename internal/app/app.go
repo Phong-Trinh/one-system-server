@@ -99,7 +99,7 @@ func New(ctx context.Context) (*App, error) {
 	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
 
 	dispatcher := usecase.NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo)
-	schedulingEngine := usecase.NewSchedulingEngine(poRepo, sopRepo, taskRepo, dispatcher)
+	schedulingEngine := usecase.NewSchedulingEngine(poRepo, sopRepo, taskRepo, machineRepo, dispatcher)
 	allocationUC.SetSchedulingEngine(schedulingEngine, dispatcher)
 
 	// ── Orchestrator (Auto-Decomposition Engine) ─────────────────────────────
