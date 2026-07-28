@@ -150,3 +150,17 @@ type StaffTaskRepository interface {
 	// Update ghi lại toàn bộ task (dùng khi cập nhật status, timestamps).
 	Update(ctx context.Context, t *models.StaffTask) error
 }
+
+// ── StaffTask Usecase (KDS Execution) ──────────────────────────────────────────
+
+// StaffTaskUseCase defines the API boundary for Kitchen Display System (KDS) execution.
+type StaffTaskUseCase interface {
+	// StartTask is called when a staff member starts a PENDING task.
+	StartTask(ctx context.Context, taskID string, actualStart time.Time) error
+	
+	// CompleteTask is called when a staff member finishes an ACTIVE or WAITING task.
+	CompleteTask(ctx context.Context, taskID string, actualEnd time.Time) error
+	
+	// FailTask is called when a task fails during execution (e.g., machine breakdown).
+	FailTask(ctx context.Context, taskID string, failedAt time.Time, reason string) error
+}

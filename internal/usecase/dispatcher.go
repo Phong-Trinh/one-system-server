@@ -4,12 +4,25 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"one-system-server/internal/domain/models"
 	"one-system-server/internal/domain/services"
 )
+
+const (
+	MaxChunkTime         = 60 * time.Minute
+	defaultMinUsefulTime = 15 * time.Minute
+	// maxFillInPerWindow gioi han so fill-in duoc gap vao 1 idle window.
+	// Tranh vong lap vo han khi nhieu task nho phu hop lien tiep nhau.
+	maxFillInPerWindow = 5
+)
+
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -22,6 +35,8 @@ import (
 //   - EndShift() nhân viên rời ca → trigger re-assign nếu có staff thay thế
 type Dispatcher interface {
 	Dispatch(ctx context.Context, nodeID string) error
+	// SetNow overrides the current time function (useful for testing)
+	SetNow(f func() time.Time)
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -32,6 +47,7 @@ type dispatcher struct {
 	batchRepo   services.ProductionBatchRepository
 	taskRepo    services.StaffTaskRepository
 	sopRepo     services.SOPRepository
+	poRepo      services.ProductionOrderRepository
 	safetyBuf   time.Duration // default 30s — idle window buffer cho fill-in tasks
 	now         func() time.Time
 }
@@ -40,12 +56,14 @@ type dispatcher struct {
 //
 //   - batchRepo dùng để tính machine free_at (load batch.EstimatedCompletion khi machine BUSY)
 //   - sopRepo dùng để load SOPStep.Duration khi tính fill-in task fit
+//   - poRepo dùng để lấy MachineUtilizationScore làm tie-breaker khi sort tasks
 func NewDispatcher(
 	shiftRepo services.StaffShiftRepository,
 	machineRepo services.MachineRepository,
 	batchRepo services.ProductionBatchRepository,
 	taskRepo services.StaffTaskRepository,
 	sopRepo services.SOPRepository,
+	poRepo services.ProductionOrderRepository,
 ) Dispatcher {
 	return &dispatcher{
 		shiftRepo:   shiftRepo,
@@ -53,9 +71,47 @@ func NewDispatcher(
 		batchRepo:   batchRepo,
 		taskRepo:    taskRepo,
 		sopRepo:     sopRepo,
+		poRepo:      poRepo,
 		safetyBuf:   30 * time.Second,
 		now:         time.Now,
 	}
+}
+
+// SetNow overrides the current time function.
+func (d *dispatcher) SetNow(f func() time.Time) {
+	d.now = f
+}
+
+// poMachineScore tra ve MachineUtilizationScore cua PO chua task nay.
+// Cache ket qua trong scoreCache (map[poID]float64) de tranh query N+1.
+func (d *dispatcher) poMachineScore(ctx context.Context, scoreCache map[string]float64, poID string) float64 {
+	if s, ok := scoreCache[poID]; ok {
+		return s
+	}
+	po, err := d.poRepo.FindByID(ctx, poID)
+	if err != nil || po == nil {
+		scoreCache[poID] = 0
+		return 0
+	}
+	scoreCache[poID] = po.MachineUtilizationScore
+	return po.MachineUtilizationScore
+}
+
+// poDeadlineUrgency tra ve so giay con lai den deadline cua PO.
+// PO khong co deadline tra ve MaxInt64 (uu tien thap nhat).
+// Dung lam Tie-break 4 trong Dispatcher: PO nao co deadline GAP hon (con it thoi gian hon) se duoc uu tien truoc.
+func (d *dispatcher) poDeadlineUrgency(ctx context.Context, deadlineCache map[string]int64, poID string, now time.Time) int64 {
+	if v, ok := deadlineCache[poID]; ok {
+		return v
+	}
+	po, err := d.poRepo.FindByID(ctx, poID)
+	if err != nil || po == nil || po.DeadlineAt == nil {
+		deadlineCache[poID] = math.MaxInt64
+		return math.MaxInt64
+	}
+	urgency := int64(po.DeadlineAt.Sub(now).Seconds())
+	deadlineCache[poID] = urgency
+	return urgency
 }
 
 // ─── Dispatch ────────────────────────────────────────────────────────────────
@@ -88,12 +144,33 @@ func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: load machines: %w", err)
 	}
+	now := d.now()
+
+	// [2b] Re-queue pending tasks assigned to offline/broken machines that haven't started yet
+	offlineMachines := make(map[string]bool)
+	for _, m := range machines {
+		if m.Status == models.MachineDecommissioned || m.Status == models.MachineUnderMaintenance || m.Status == "OFFLINE" {
+			offlineMachines[m.ID] = true
+		}
+	}
+	if len(offlineMachines) > 0 {
+		pendingTasks, err := d.taskRepo.FindByNode(ctx, nodeID, []models.TaskStatus{models.TaskPending})
+		if err == nil {
+			for _, t := range pendingTasks {
+				if offlineMachines[t.MachineID] && t.StartedAt == nil {
+					t.Status = models.TaskQueued
+					t.MachineID = ""
+					t.AssignedTo = ""
+					_ = d.taskRepo.Update(ctx, t)
+				}
+			}
+		}
+	}
+
 	machineTimelines, err := d.calcMachineTimelines(ctx, nodeID, machines)
 	if err != nil {
 		return fmt.Errorf("dispatcher.Dispatch: calc machine timelines: %w", err)
 	}
-
-	now := d.now()
 
 	for {
 		assignedAny := false
@@ -102,17 +179,31 @@ func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
 			break
 		}
 
+		scoreCache := make(map[string]float64)
+		deadlineCache := make(map[string]int64)
 		sort.Slice(pass1Tasks, func(i, j int) bool {
-			if pass1Tasks[i].EarliestStart.Equal(pass1Tasks[j].EarliestStart) {
-				// Ưu tiên RETRIEVE lên trước SETUP để giải phóng máy sớm nhất có thể
-				if pass1Tasks[i].TaskKind == models.TaskKindRetrieve && pass1Tasks[j].TaskKind != models.TaskKindRetrieve {
-					return true
-				}
-				if pass1Tasks[j].TaskKind == models.TaskKindRetrieve && pass1Tasks[i].TaskKind != models.TaskKindRetrieve {
-					return false
-				}
+			ti, tj := pass1Tasks[i], pass1Tasks[j]
+			// Tie-break 1: EarliestStart som hon truoc
+			if !ti.EarliestStart.Equal(tj.EarliestStart) {
+				return ti.EarliestStart.Before(tj.EarliestStart)
 			}
-			return pass1Tasks[i].EarliestStart.Before(pass1Tasks[j].EarliestStart)
+			// Tie-break 2: RETRIEVE truoc SETUP de giai phong may som nhat
+			if ti.TaskKind == models.TaskKindRetrieve && tj.TaskKind != models.TaskKindRetrieve {
+				return true
+			}
+			if tj.TaskKind == models.TaskKindRetrieve && ti.TaskKind != models.TaskKindRetrieve {
+				return false
+			}
+			// Tie-break 3: PO xai may nhieu hon (MachineUtilizationScore cao hon) -> uu tien kich hoat truoc
+			si := d.poMachineScore(ctx, scoreCache, ti.POID)
+			sj := d.poMachineScore(ctx, scoreCache, tj.POID)
+			if si != sj {
+				return si > sj
+			}
+			// Tie-break 4: PO co deadline GAP hon (so giay den deadline it hon) -> uu tien truoc
+			di := d.poDeadlineUrgency(ctx, deadlineCache, ti.POID, now)
+			dj := d.poDeadlineUrgency(ctx, deadlineCache, tj.POID, now)
+			return di < dj
 		})
 
 		for _, task := range pass1Tasks {
@@ -148,8 +239,24 @@ func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
 			break
 		}
 
+		scoreCache2 := make(map[string]float64)
+		deadlineCache2 := make(map[string]int64)
 		sort.Slice(pass2Tasks, func(i, j int) bool {
-			return pass2Tasks[i].EarliestStart.Before(pass2Tasks[j].EarliestStart)
+			ti, tj := pass2Tasks[i], pass2Tasks[j]
+			// Tie-break 1: EarliestStart som hon truoc
+			if !ti.EarliestStart.Equal(tj.EarliestStart) {
+				return ti.EarliestStart.Before(tj.EarliestStart)
+			}
+			// Tie-break 2: PO xai may nhieu hon -> uu tien hon (giai phong may som)
+			si := d.poMachineScore(ctx, scoreCache2, ti.POID)
+			sj := d.poMachineScore(ctx, scoreCache2, tj.POID)
+			if si != sj {
+				return si > sj
+			}
+			// Tie-break 3: PO co deadline GAP hon -> uu tien truoc
+			di := d.poDeadlineUrgency(ctx, deadlineCache2, ti.POID, now)
+			dj := d.poDeadlineUrgency(ctx, deadlineCache2, tj.POID, now)
+			return di < dj
 		})
 
 		for _, task := range pass2Tasks {
@@ -187,7 +294,15 @@ func (d *dispatcher) Dispatch(ctx context.Context, nodeID string) error {
 func (d *dispatcher) dependenciesAssigned(ctx context.Context, task *models.StaffTask) bool {
 	step, err := d.sopRepo.FindStepByID(ctx, task.SOPStepID)
 	if err != nil || step == nil {
-		return true
+		// Neu task.SOPStepID co _ (e.g. f3_bun_mix_1), fallback lay base ID
+		baseID := task.SOPStepID
+		if idx := strings.LastIndex(baseID, "_"); idx > 0 {
+			baseID = baseID[:idx]
+		}
+		step, err = d.sopRepo.FindStepByID(ctx, baseID)
+		if err != nil || step == nil {
+			return true
+		}
 	}
 	if len(step.DependsOn) == 0 {
 		return true
@@ -198,7 +313,7 @@ func (d *dispatcher) dependenciesAssigned(ctx context.Context, task *models.Staf
 	}
 	for _, depStepID := range step.DependsOn {
 		for _, t := range allTasks {
-			if t.SOPStepID == depStepID && t.Status == models.TaskQueued {
+			if (t.SOPStepID == depStepID || strings.HasPrefix(t.SOPStepID, depStepID+"_")) && t.Status == models.TaskQueued {
 				return false
 			}
 		}
@@ -228,6 +343,67 @@ func (d *dispatcher) assignSingleTask(
 		return false
 	}
 
+	if task.TaskKind == models.TaskKindNormal && step.IsSplittable {
+		taskDuration := time.Duration(step.Duration) * time.Second
+		if task.EstimatedDuration != nil {
+			taskDuration = time.Duration(*task.EstimatedDuration) * time.Second
+		}
+		if taskDuration > MaxChunkTime {
+			remDuration := taskDuration - MaxChunkTime
+			minUsefulTime := defaultMinUsefulTime
+			if step.MinUsefulTime != nil {
+				minUsefulTime = time.Duration(*step.MinUsefulTime) * time.Second
+			}
+			if remDuration >= minUsefulTime {
+				factor := float64(MaxChunkTime) / float64(taskDuration)
+				if factor > 1.0 {
+					factor = 1.0
+				}
+				chunkQty := task.TargetQty * factor
+				chunkSlots := task.RequiredSlots * factor
+				remQty := task.TargetQty - chunkQty
+				remSlots := task.RequiredSlots - chunkSlots
+
+				if task.RootTaskID == nil {
+					task.RootTaskID = &task.ID
+				}
+
+				remDurationSec := int(remDuration.Seconds())
+				remainder := &models.StaffTask{
+					ID:                uuid.New().String(),
+					POID:              task.POID,
+					OrderItemID:       task.OrderItemID,
+					SOPStepID:         task.SOPStepID,
+					NodeID:            task.NodeID,
+					BatchIndex:        task.BatchIndex,
+					TaskKind:          task.TaskKind,
+					OriginalKind:      task.OriginalKind,
+					Status:            models.TaskQueued,
+					TargetQty:         remQty,
+					RequiredSlots:     remSlots,
+					RootTaskID:        task.RootTaskID,
+					EstimatedDuration: &remDurationSec,
+					Priority:          task.Priority,
+					EarliestStart:     task.EarliestStart,
+					IsCritical:        task.IsCritical,
+					CreatedAt:         time.Now(),
+				}
+
+				if err := d.taskRepo.Create(ctx, remainder); err != nil {
+					log.Printf("dispatcher.assignSingleTask: create remainder task %s error: %v", remainder.ID, err)
+				} else {
+					log.Printf("dispatcher.assignSingleTask: split task %s -> chunk (qty=%.1f) + remainder %s (qty=%.1f, dur=%v)",
+						task.ID, chunkQty, remainder.ID, remQty, remDuration)
+				}
+
+				task.TargetQty = chunkQty
+				task.RequiredSlots = chunkSlots
+				chunkDurSec := int(MaxChunkTime.Seconds())
+				task.EstimatedDuration = &chunkDurSec
+			}
+		}
+	}
+
 	shift, sFreeAt := d.pickStaff(shifts, staffFreeAt, now)
 	if shift == nil {
 		log.Printf("dispatcher.Dispatch: no available staff for queued task %s (node=%s, equipType=%v)",
@@ -238,7 +414,7 @@ func (d *dispatcher) assignSingleTask(
 	var machineID string
 	var mFreeAt time.Time
 
-	if task.TaskKind == models.TaskKindRetrieve {
+	if task.TaskKind == models.TaskKindRetrieve && step.EquipmentTypeID != nil {
 		// RETRIEVE phải dùng cùng máy với SETUP tương ứng (cùng SOPStepID + POID).
 		// Không được để pickMachine tự chọn máy khác.
 		machineID, mFreeAt = d.findSetupMachineForRetrieve(ctx, task.POID, task.SOPStepID, task.BatchIndex, machineTimelines, now)
@@ -267,7 +443,11 @@ func (d *dispatcher) assignSingleTask(
 		setupStart := d.findSetupScheduledStart(ctx, task.POID, task.SOPStepID, task.BatchIndex, scheduledStart, step)
 		scheduledEnd = setupStart.Add(time.Duration(step.Duration) * time.Second)
 	} else {
-		scheduledEnd = scheduledStart.Add(time.Duration(step.Duration) * time.Second)
+		taskDuration := time.Duration(step.Duration) * time.Second
+		if task.EstimatedDuration != nil {
+			taskDuration = time.Duration(*task.EstimatedDuration) * time.Second
+		}
+		scheduledEnd = scheduledStart.Add(taskDuration)
 	}
 
 	task.AssignedTo = shift.StaffID
@@ -324,6 +504,9 @@ func (d *dispatcher) findSetupMachineForRetrieve(
 	}
 	for _, t := range tasks {
 		if t.SOPStepID == sopStepID && t.TaskKind == models.TaskKindSetup && t.BatchIndex == batchIndex && t.MachineID != "" {
+			if t.Status == models.TaskFailed || t.Status == models.TaskCancelled {
+				continue // Bỏ qua setup đã hỏng/hủy
+			}
 			// RETRIEVE does not consume additional slots (it takes 0 duration on machine).
 			// We just need to know when it can start.
 			mFree := now
@@ -534,7 +717,7 @@ func (d *dispatcher) pickMachine(
 		if m.EquipmentTypeID != equipType {
 			continue
 		}
-		if m.Status == models.MachineDecommissioned || m.Status == models.MachineUnderMaintenance {
+		if m.Status == models.MachineDecommissioned || m.Status == models.MachineUnderMaintenance || m.Status == "OFFLINE" {
 			continue
 		}
 
@@ -543,7 +726,11 @@ func (d *dispatcher) pickMachine(
 			continue // Should have been initialized
 		}
 
-		mFree := timeline.FindEarliestWindow(fallback, duration, requiredSlots)
+		reqSlots := requiredSlots
+		if reqSlots <= 0 {
+			reqSlots = 1.0
+		}
+		mFree := timeline.FindEarliestWindow(fallback, duration, reqSlots)
 
 		// If mFree is zero, it means it cannot fit at all (e.g., requiredSlots > maxCapacity)
 		if mFree.IsZero() {
@@ -629,9 +816,25 @@ func (d *dispatcher) calcMachineTimelines(ctx context.Context, nodeID string, ma
 	result := make(map[string]*MachineTimeline, len(machines))
 
 	for _, m := range machines {
+		maxCap := m.MaxCapacity
+		if maxCap <= 0 {
+			maxCap = 1.0
+		}
 		timeline := &MachineTimeline{
-			MaxCapacity: m.MaxCapacity,
+			MaxCapacity: maxCap,
 			Allocations: make([]MachineAllocation, 0),
+		}
+		if m.Status == models.MachineBusy && m.CurrentBatchID != nil {
+			batch, err := d.batchRepo.FindByID(ctx, *m.CurrentBatchID)
+			if err == nil && batch != nil && batch.EstimatedCompletion != nil {
+				nowTime := time.Now()
+				if d.now != nil {
+					nowTime = d.now()
+				}
+				if batch.EstimatedCompletion.After(nowTime) {
+					timeline.AddAllocation(nowTime, *batch.EstimatedCompletion, maxCap)
+				}
+			}
 		}
 		result[m.ID] = timeline
 	}
@@ -769,8 +972,13 @@ func (d *dispatcher) assignFillInTasks(
 		log.Printf("DEBUG assignFillInTasks: retrieve step=%s idleStart=%s idleEnd=%s window=%s",
 			retrieveTask.SOPStepID, idleStart.Format("15:04"), idleEnd.Format("15:04"), idleEnd.Sub(idleStart).String())
 
-		// Loop to allow multiple fill-ins in the same window
+		// Loop to allow multiple fill-ins in the same window (up to maxFillInPerWindow)
+		fillInCount := 0
 		for {
+			if fillInCount >= maxFillInPerWindow {
+				log.Printf("DEBUG assignFillInTasks: reached maxFillInPerWindow (%d) for retrieve %s", maxFillInPerWindow, retrieveTask.ID)
+				break
+			}
 			availableWindow := idleEnd.Sub(idleStart) - d.safetyBuf
 			if availableWindow <= 0 {
 				break
@@ -830,7 +1038,7 @@ func (d *dispatcher) assignFillInTasks(
 
 				// Clone for remainder
 				remainder = &models.StaffTask{
-					ID:                "rem-" + candidate.ID + "-" + fmt.Sprint(time.Now().UnixNano()),
+					ID:                uuid.New().String(),
 					POID:              candidate.POID,
 					OrderItemID:       candidate.OrderItemID,
 					SOPStepID:         candidate.SOPStepID,
@@ -903,6 +1111,7 @@ func (d *dispatcher) assignFillInTasks(
 			}
 
 			used[candidate.ID] = true
+			fillInCount++
 
 			// Advance idleStart for the next candidate
 			idleStart = candidate.ScheduledEnd
@@ -921,7 +1130,6 @@ func (d *dispatcher) assignFillInTasks(
 //	NEARBY_IDLE:     task cùng equipment_type_id với parent step (MVP: same as FULL_IDLE)
 //	PERIODIC_CHECK:  task có duration < checkInterval - safetyBuf, phải IsInterruptible
 //	ACTIVE_WAIT:     không fill-in (đã filter ở trên)
-const defaultMinUsefulTime = 15 * time.Minute
 
 func (d *dispatcher) findFillInCandidate(
 	pool []*models.StaffTask,

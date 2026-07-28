@@ -159,6 +159,12 @@ type ProductionOrder struct {
 	ScheduledEnd   time.Time  `json:"scheduled_end"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+
+	// MachineUtilizationScore la ti le TotalMachineTime / TotalDuration cua SOP (0.0 -> 1.0).
+	// Duoc tinh mot lan khi SchedulePO chay va cache lai de Dispatcher sort khong can re-query SOP.
+	// PO co score cao hon = xai may nhieu hon = can duoc kich hoat som de tranh may bo khong.
+	// Vi du: BUN (0.54) > PATTY (0.05) > SAUCE (0.0)
+	MachineUtilizationScore float64 `json:"machine_utilization_score"`
 }
 
 // BOMSnapshot locks the BOM version at the moment of ProductionOrder creation.

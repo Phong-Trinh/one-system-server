@@ -49,17 +49,21 @@ type SchedulingEngine interface {
 	// RescheduleOnShiftChange: gọi khi shift thay đổi.
 	// Trigger Dispatcher để assign các QUEUED tasks còn trống.
 	RescheduleOnShiftChange(ctx context.Context, nodeID string) error
+
+	// ReschedulePendingTasks: gọi khi KDS phát hiện Drift hoặc Fail.
+	// Hủy toàn bộ PENDING về QUEUED và chạy lại Dispatcher.
+	ReschedulePendingTasks(ctx context.Context, nodeID string, nowBase time.Time) error
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
 
 type schedulingEngine struct {
-	poRepo     services.ProductionOrderRepository
-	sopRepo    services.SOPRepository
-	taskRepo   services.StaffTaskRepository
+	poRepo      services.ProductionOrderRepository
+	sopRepo     services.SOPRepository
+	taskRepo    services.StaffTaskRepository
 	machineRepo services.MachineRepository
-	dispatcher Dispatcher
-	now        func() time.Time // injectable cho testing
+	dispatcher  Dispatcher
+	now         func() time.Time // injectable cho testing
 }
 
 // NewSchedulingEngine tạo một SchedulingEngine mới.
@@ -79,6 +83,23 @@ func NewSchedulingEngine(
 		dispatcher:  dispatcher,
 		now:         time.Now,
 	}
+}
+
+// calcMachineUtilizationScore tinh ti le thoi gian may tu chay / tong thoi gian SOP.
+// Ket qua nam trong [0.0, 1.0]. PO cang xai may nhieu (IsIdleStep=true) thi score cang cao.
+// Dung lam Tie-breaker trong Dispatcher: uu tien kich hoat PO xai may truoc de may khong bo khong.
+func calcMachineUtilizationScore(steps []*models.SOPStep) float64 {
+	var total, machine float64
+	for _, s := range steps {
+		total += float64(s.Duration)
+		if s.IsIdleStep {
+			machine += float64(s.Duration)
+		}
+	}
+	if total <= 0 {
+		return 0
+	}
+	return machine / total
 }
 
 // ─── SchedulePO ──────────────────────────────────────────────────────────────
@@ -113,6 +134,17 @@ func (e *schedulingEngine) SchedulePO(ctx context.Context, poID string) ([]*mode
 	if len(stepsToSchedule) == 0 {
 		// Tất cả steps đã được schedule — trả về existing tasks
 		return e.taskRepo.FindByPO(ctx, poID)
+	}
+
+	// [3b] Tinh & luu MachineUtilizationScore de Dispatcher dung lam tie-breaker.
+	// Dung toan bo steps (ke ca da done) de score on dinh theo SOP structure.
+	score := calcMachineUtilizationScore(steps)
+	if score != po.MachineUtilizationScore {
+		po.MachineUtilizationScore = score
+		if err := e.poRepo.Update(ctx, po); err != nil {
+			// Non-fatal: score khong luu duoc, Dispatcher se fallback ve 0
+			log.Printf("schedulingEngine.SchedulePO: save MachineUtilizationScore warning: %v", err)
+		}
 	}
 
 	// [4] Build DAG
@@ -471,4 +503,43 @@ func buildTopoGroups(steps []*models.SOPStep) ([][]models.SOPStep, error) {
 		return nil, ErrCyclicDependency
 	}
 	return result, nil
+}
+
+// ReschedulePendingTasks handles the global reschedule strategy for MVP.
+// It resets all PENDING tasks back to QUEUED and re-runs the Dispatcher from nowBase.
+func (e *schedulingEngine) ReschedulePendingTasks(ctx context.Context, nodeID string, nowBase time.Time) error {
+	log.Printf("ReschedulePendingTasks triggered for node=%s at %v", nodeID, nowBase.Format("15:04"))
+
+	// 1. Fetch all tasks for the node
+	allTasks, err := e.taskRepo.FindByNode(ctx, nodeID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to fetch tasks for reschedule: %w", err)
+	}
+
+	// 2. Identify PENDING tasks and reset them to QUEUED
+	var toUpdate []*models.StaffTask
+	for _, tk := range allTasks {
+		if tk.Status == models.TaskPending {
+			tk.Status = models.TaskQueued
+			tk.AssignedTo = ""
+			tk.MachineID = ""
+			toUpdate = append(toUpdate, tk)
+		}
+	}
+
+	// 3. Save reset tasks to repository
+	for _, tk := range toUpdate {
+		if err := e.taskRepo.Update(ctx, tk); err != nil {
+			return fmt.Errorf("failed to reset task %s to QUEUED: %w", tk.ID, err)
+		}
+	}
+
+	// 4. Trigger Dispatcher
+	log.Printf("Reschedule: reset %d PENDING tasks to QUEUED. Dispatching...", len(toUpdate))
+	e.dispatcher.SetNow(func() time.Time { return nowBase })
+	if err := e.dispatcher.Dispatch(ctx, nodeID); err != nil {
+		return fmt.Errorf("dispatcher failed during reschedule: %w", err)
+	}
+
+	return nil
 }

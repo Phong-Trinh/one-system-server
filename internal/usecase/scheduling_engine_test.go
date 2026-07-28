@@ -30,7 +30,7 @@ func setupTestEnv() (
 	machineRepo := newMockMachineRepo()
 
 	// Setup Dispatcher
-	dispatcher := NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo)
+	dispatcher := NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo, poRepo)
 
 	// Setup SchedulingEngine
 	engine := NewSchedulingEngine(poRepo, sopRepo, taskRepo, machineRepo, dispatcher)

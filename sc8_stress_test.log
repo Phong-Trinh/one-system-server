@@ -1,0 +1,338 @@
+=== RUN   TestStress_Case1_DominoEffect
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_bun created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task bd25a225-fdba-4337-a7c2-242c158d0a72 -> staff=f_staff_2 machine= start=2026-07-28T00:53:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 47ea5f33-f0aa-4f6c-810a-01e81f1d7b99 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T01:13:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 30a7f1be-c5cc-4d95-9a42-8651529320ad -> staff=f_staff_1 machine=m_grill_A start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 5dce9d34-3d58-4e2b-ad5b-cdf5c6aeb6eb -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1e7da7ac-bee7-4a5c-9df2-f8efa9082291 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_2 != staffID=f_staff_1
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_patty created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task cf0d0c12-f5b8-4b8c-acad-473da397d021 -> staff=f_staff_2 machine= start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 740a7c0a-ee63-4fb2-8adc-ef2347382d15 (step=patty_grill) synced → start=01:38 end=01:48
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c773e8a2-ea58-465e-b33f-6184f734d48c -> staff=f_staff_1 machine=m_grill_A start=2026-07-28T01:33:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 9ccf8880-ba75-455e-a7e8-8c5439e1ad9d (step=patty_grill) synced → start=01:43 end=01:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 6b093259-1559-4626-b544-f6180afdea4f -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 740a7c0a-ee63-4fb2-8adc-ef2347382d15 -> staff=f_staff_1 machine=m_grill_A start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 9ccf8880-ba75-455e-a7e8-8c5439e1ad9d -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:43:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_2 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_2 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_1
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_sauce created 2 QUEUED tasks
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_2 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_2 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_1
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task d337bd9e-7785-4961-97a9-6b3f2b828d4f -> staff=f_staff_1 machine= start=2026-07-28T01:48:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task 0956f89e-2414-49f4-9d13-87127c6a7037 (step=sauce_pack) EarliestStart → 02:33
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 0956f89e-2414-49f4-9d13-87127c6a7037 -> staff=f_staff_2 machine= start=2026-07-28T02:33:42+07:00
+
+========== INITIAL SCHEDULE ==========
+T+9773 [00:53 -> 01:13] f_staff_2  : [PENDING ] bun_mix        
+T+9793 [01:13 -> 01:18] f_staff_3  : [PENDING ] bun_bake        [m_grill_A]
+T+9798 [01:18 -> 01:33] f_staff_1  : [PENDING ] bun_bake        [m_grill_A]
+T+9798 [01:18 -> 01:23] f_staff_2  : [PENDING ] bun_bake        [m_grill_B]
+T+9803 [01:23 -> 01:53] f_staff_2  : [PENDING ] patty_prep     
+T+9803 [01:23 -> 01:38] f_staff_3  : [PENDING ] bun_bake        [m_grill_B]
+T+9813 [01:33 -> 01:38] f_staff_1  : [PENDING ] patty_grill     [m_grill_A]
+T+9818 [01:38 -> 01:48] f_staff_1  : [PENDING ] patty_grill     [m_grill_A]
+T+9818 [01:38 -> 01:43] f_staff_3  : [PENDING ] patty_grill     [m_grill_B]
+T+9823 [01:43 -> 01:53] f_staff_3  : [PENDING ] patty_grill     [m_grill_B]
+T+9828 [01:48 -> 02:33] f_staff_1  : [PENDING ] sauce_mix      
+T+9873 [02:33 -> 02:53] f_staff_2  : [PENDING ] sauce_pack     
+==================================================
+
+🔥 [SỰ CỐ] Staff làm Patty Prep TRỄ 25 phút (Hoàn thành lúc 02:18)
+2026/07/28 00:53:42 Drift detected for task cf0d0c12-f5b8-4b8c-acad-473da397d021: 25m (Scheduled: 01:53, Actual: 02:18)
+2026/07/28 00:53:42 ReschedulePendingTasks triggered for node=factory_f at 02:18
+2026/07/28 00:53:42 Reschedule: reset 10 PENDING tasks to QUEUED. Dispatching...
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task bd25a225-fdba-4337-a7c2-242c158d0a72 -> staff=f_staff_2 machine= start=2026-07-28T02:18:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 30a7f1be-c5cc-4d95-9a42-8651529320ad (step=bun_bake) synced → start=02:23 end=02:38
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 47ea5f33-f0aa-4f6c-810a-01e81f1d7b99 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T02:18:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 1e7da7ac-bee7-4a5c-9df2-f8efa9082291 (step=bun_bake) synced → start=02:28 end=02:43
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 5dce9d34-3d58-4e2b-ad5b-cdf5c6aeb6eb -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T02:23:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 740a7c0a-ee63-4fb2-8adc-ef2347382d15 (step=patty_grill) synced → start=02:43 end=02:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c773e8a2-ea58-465e-b33f-6184f734d48c -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T02:38:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 9ccf8880-ba75-455e-a7e8-8c5439e1ad9d (step=patty_grill) synced → start=02:48 end=02:58
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 6b093259-1559-4626-b544-f6180afdea4f -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T02:43:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 30a7f1be-c5cc-4d95-9a42-8651529320ad -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T02:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1e7da7ac-bee7-4a5c-9df2-f8efa9082291 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T02:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 740a7c0a-ee63-4fb2-8adc-ef2347382d15 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T02:43:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 9ccf8880-ba75-455e-a7e8-8c5439e1ad9d -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T02:48:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:23 idleEnd=02:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:28 idleEnd=02:43 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:43 idleEnd=02:53 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:48 idleEnd=02:58 window=10m0s
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 0956f89e-2414-49f4-9d13-87127c6a7037 -> staff=f_staff_1 machine= start=2026-07-28T02:48:42+07:00
+
+========== AFTER PATTY PREP LATE DRIFT ==========
+T+9828 [01:48 -> 02:33] f_staff_1  : [ACTIVE  ] sauce_mix      
+T+9858 [02:18 -> 02:23] f_staff_3  : [PENDING ] bun_bake        [m_grill_A]
+T+9858 [02:18 -> 02:38] f_staff_2  : [PENDING ] bun_mix        
+T+9863 [02:23 -> 02:28] f_staff_3  : [PENDING ] bun_bake        [m_grill_B]
+T+9878 [02:38 -> 02:38] f_staff_2  : [PENDING ] bun_bake        [m_grill_A]
+T+9878 [02:38 -> 02:43] f_staff_2  : [PENDING ] bun_bake        [m_grill_B]
+T+9878 [02:38 -> 02:43] f_staff_3  : [PENDING ] patty_grill     [m_grill_A]
+T+9883 [02:43 -> 02:48] f_staff_1  : [PENDING ] patty_grill     [m_grill_B]
+T+9883 [02:43 -> 02:53] f_staff_2  : [PENDING ] patty_grill     [m_grill_A]
+T+9888 [02:48 -> 02:58] f_staff_3  : [PENDING ] patty_grill     [m_grill_B]
+T+9888 [02:48 -> 03:08] f_staff_1  : [PENDING ] sauce_pack     
+==================================================
+✅ Case 1: Domino Effect OK. Patty Grill bị lùi, Sauce Mix độc lập không bị ảnh hưởng.
+--- PASS: TestStress_Case1_DominoEffect (0.00s)
+=== RUN   TestStress_Case2_CatastrophicBreakdown
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_bun created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 07231521-fbf2-495d-a953-0e407e11073d -> staff=f_staff_3 machine= start=2026-07-28T00:53:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 99b5c1d8-3394-4a2d-b6f9-59ca510b0e39 -> staff=f_staff_1 machine=m_grill_A start=2026-07-28T01:13:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 10c88b22-c26c-440c-a71f-0fa1ccffa200 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 0660369b-8bc6-4754-b2c8-699ea6c3f6c7 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 076841f9-ae2d-483b-9635-701f63e0d787 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_patty created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 94f5e35b-0927-4929-93c7-9505150d3a21 -> staff=f_staff_3 machine= start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 4cb21bdf-dee3-4eb7-9296-48a3264f7ad7 (step=patty_grill) synced → start=01:38 end=01:48
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 2bf56048-1aa8-4735-8bde-9f4539abe4c0 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T01:33:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE f61f048c-bb6f-4cb7-ab42-c3543536016a (step=patty_grill) synced → start=01:43 end=01:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b3d1e79b-a353-482a-bbab-c36f3c521de1 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 4cb21bdf-dee3-4eb7-9296-48a3264f7ad7 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task f61f048c-bb6f-4cb7-ab42-c3543536016a -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T01:43:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_3 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_sauce created 2 QUEUED tasks
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_3 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task cd5d0116-ab92-4dfc-b441-23c57f84b000 -> staff=f_staff_2 machine= start=2026-07-28T01:48:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task af290c78-1056-4a66-a26b-ca03dd6155a3 (step=sauce_pack) EarliestStart → 02:33
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task af290c78-1056-4a66-a26b-ca03dd6155a3 -> staff=f_staff_1 machine= start=2026-07-28T02:33:42+07:00
+
+========== INITIAL SCHEDULE ==========
+T+9773 [00:53 -> 01:13] f_staff_3  : [PENDING ] bun_mix        
+T+9793 [01:13 -> 01:18] f_staff_1  : [PENDING ] bun_bake        [m_grill_A]
+T+9798 [01:18 -> 01:23] f_staff_3  : [PENDING ] bun_bake        [m_grill_B]
+T+9798 [01:18 -> 01:33] f_staff_2  : [PENDING ] bun_bake        [m_grill_A]
+T+9803 [01:23 -> 01:38] f_staff_1  : [PENDING ] bun_bake        [m_grill_B]
+T+9803 [01:23 -> 01:53] f_staff_3  : [PENDING ] patty_prep     
+T+9813 [01:33 -> 01:38] f_staff_2  : [PENDING ] patty_grill     [m_grill_A]
+T+9818 [01:38 -> 01:48] f_staff_2  : [PENDING ] patty_grill     [m_grill_A]
+T+9818 [01:38 -> 01:43] f_staff_1  : [PENDING ] patty_grill     [m_grill_B]
+T+9823 [01:43 -> 01:53] f_staff_1  : [PENDING ] patty_grill     [m_grill_B]
+T+9828 [01:48 -> 02:33] f_staff_2  : [PENDING ] sauce_mix      
+T+9873 [02:33 -> 02:53] f_staff_1  : [PENDING ] sauce_pack     
+==================================================
+
+🔥 [SỰ CỐ] Grill A bốc khói lúc 01:15
+2026/07/28 00:53:42 Task 99b5c1d8-3394-4a2d-b6f9-59ca510b0e39 failed at 01:15. Reason: Cháy khét
+2026/07/28 00:53:42 Machine m_grill_A marked as UNDER_MAINTENANCE
+2026/07/28 00:53:42 ReschedulePendingTasks triggered for node=factory_f at 01:15
+2026/07/28 00:53:42 Reschedule: reset 11 PENDING tasks to QUEUED. Dispatching...
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 07231521-fbf2-495d-a953-0e407e11073d -> staff=f_staff_2 machine= start=2026-07-28T01:15:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 94f5e35b-0927-4929-93c7-9505150d3a21 -> staff=f_staff_3 machine= start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 10c88b22-c26c-440c-a71f-0fa1ccffa200 -> staff=f_staff_1 machine=m_grill_A start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 076841f9-ae2d-483b-9635-701f63e0d787 (step=bun_bake) synced → start=01:38 end=01:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 0660369b-8bc6-4754-b2c8-699ea6c3f6c7 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T01:33:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 4cb21bdf-dee3-4eb7-9296-48a3264f7ad7 (step=patty_grill) synced → start=01:58 end=02:08
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 2bf56048-1aa8-4735-8bde-9f4539abe4c0 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T01:53:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE f61f048c-bb6f-4cb7-ab42-c3543536016a (step=patty_grill) synced → start=02:13 end=02:23
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b3d1e79b-a353-482a-bbab-c36f3c521de1 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T02:08:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 076841f9-ae2d-483b-9635-701f63e0d787 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:53:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 4cb21bdf-dee3-4eb7-9296-48a3264f7ad7 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T01:58:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task f61f048c-bb6f-4cb7-ab42-c3543536016a -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T02:13:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_3 != staffID=f_staff_1
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:38 idleEnd=01:53 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:58 idleEnd=02:08 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:13 idleEnd=02:23 window=10m0s
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task cd5d0116-ab92-4dfc-b441-23c57f84b000 -> staff=f_staff_3 machine= start=2026-07-28T02:08:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task af290c78-1056-4a66-a26b-ca03dd6155a3 (step=sauce_pack) EarliestStart → 02:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task af290c78-1056-4a66-a26b-ca03dd6155a3 -> staff=f_staff_1 machine= start=2026-07-28T02:53:42+07:00
+
+========== AFTER CATASTROPHIC BREAKDOWN (GRILL A) ==========
+T+9793 [01:13 -> 01:18] f_staff_1  : [FAILED  ] bun_bake        [m_grill_A]
+T+9795 [01:15 -> 01:35] f_staff_2  : [PENDING ] bun_mix        
+T+9798 [01:18 -> 01:33] f_staff_1  : [PENDING ] bun_bake        [m_grill_A]
+T+9803 [01:23 -> 01:53] f_staff_3  : [PENDING ] patty_prep     
+T+9813 [01:33 -> 01:38] f_staff_1  : [PENDING ] bun_bake        [m_grill_B]
+T+9833 [01:53 -> 01:53] f_staff_3  : [PENDING ] bun_bake        [m_grill_B]
+T+9833 [01:53 -> 01:58] f_staff_2  : [PENDING ] patty_grill     [m_grill_B]
+T+9838 [01:58 -> 02:08] f_staff_3  : [PENDING ] patty_grill     [m_grill_B]
+T+9848 [02:08 -> 02:13] f_staff_1  : [PENDING ] patty_grill     [m_grill_B]
+T+9848 [02:08 -> 02:53] f_staff_3  : [PENDING ] sauce_mix      
+T+9853 [02:13 -> 02:23] f_staff_2  : [PENDING ] patty_grill     [m_grill_B]
+T+9893 [02:53 -> 03:13] f_staff_1  : [PENDING ] sauce_pack     
+==================================================
+    scheduling_engine_factory_sc8_stress_test.go:191: Catastrophic Breakdown failed: Task 10c88b22-c26c-440c-a71f-0fa1ccffa200 is still assigned to Grill A!
+✅ Case 2: Catastrophic Breakdown OK. Grill A (UNDER_MAINTENANCE), Grill B (IDLE). Mọi task chuyển sang Grill B.
+--- FAIL: TestStress_Case2_CatastrophicBreakdown (0.00s)
+=== RUN   TestStress_Case3_ChaosMonkey
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_bun created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task eceb9782-746b-4188-8c91-73fb8045ce8f -> staff=f_staff_1 machine= start=2026-07-28T00:53:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b4f142f4-c5d6-4693-8438-bfb88413e4c3 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T01:13:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c22498b5-67de-4ed7-b562-f578f367bc24 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 38fa3b7d-17a5-4bf4-86a2-3de6c428a40b -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T01:18:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_patty created 5 QUEUED tasks
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c2b536a4-9fba-4483-9d50-e9226f327054 -> staff=f_staff_1 machine= start=2026-07-28T01:23:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE ac9b053f-117a-4913-b520-82be403d12a0 (step=patty_grill) synced → start=01:38 end=01:48
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a5485bce-6ada-4a8f-80bb-94b81c22b5ca -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T01:33:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 837c0a7b-a082-4284-b519-a4c38f269bf9 (step=patty_grill) synced → start=01:43 end=01:53
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a016f057-d691-48dc-8189-c0151943fe84 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task ac9b053f-117a-4913-b520-82be403d12a0 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T01:38:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 837c0a7b-a082-4284-b519-a4c38f269bf9 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T01:43:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 schedulingEngine.SchedulePO: po=po_sauce created 2 QUEUED tasks
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:18 idleEnd=01:33 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=01:23 idleEnd=01:38 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_prep because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:38 idleEnd=01:48 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=01:43 idleEnd=01:53 window=10m0s
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 701ae84a-1a80-47b5-99ec-66c35079d0ef -> staff=f_staff_3 machine= start=2026-07-28T01:48:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 (step=sauce_pack) EarliestStart → 02:33
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 -> staff=f_staff_2 machine= start=2026-07-28T02:33:42+07:00
+
+🌪️ [CHAOS MONKEY] Bắt đầu chuỗi sự kiện hủy diệt...
+   -> [SỰ CỐ 1] Patty Prep trễ 15 phút (lúc 02:08)
+2026/07/28 00:53:42 Drift detected for task c2b536a4-9fba-4483-9d50-e9226f327054: 15m (Scheduled: 01:53, Actual: 02:08)
+2026/07/28 00:53:42 ReschedulePendingTasks triggered for node=factory_f at 02:08
+2026/07/28 00:53:42 Reschedule: reset 11 PENDING tasks to QUEUED. Dispatching...
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task eceb9782-746b-4188-8c91-73fb8045ce8f -> staff=f_staff_2 machine= start=2026-07-28T02:08:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE c22498b5-67de-4ed7-b562-f578f367bc24 (step=bun_bake) synced → start=02:13 end=02:28
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b4f142f4-c5d6-4693-8438-bfb88413e4c3 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T02:08:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd (step=bun_bake) synced → start=02:13 end=02:28
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 38fa3b7d-17a5-4bf4-86a2-3de6c428a40b -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T02:08:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE ac9b053f-117a-4913-b520-82be403d12a0 (step=patty_grill) synced → start=02:33 end=02:43
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a5485bce-6ada-4a8f-80bb-94b81c22b5ca -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T02:28:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 837c0a7b-a082-4284-b519-a4c38f269bf9 (step=patty_grill) synced → start=02:33 end=02:43
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a016f057-d691-48dc-8189-c0151943fe84 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T02:28:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c22498b5-67de-4ed7-b562-f578f367bc24 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T02:28:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T02:28:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task ac9b053f-117a-4913-b520-82be403d12a0 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T02:33:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 837c0a7b-a082-4284-b519-a4c38f269bf9 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T02:33:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:13 idleEnd=02:28 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:13 idleEnd=02:28 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:33 idleEnd=02:43 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:33 idleEnd=02:43 window=10m0s
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 701ae84a-1a80-47b5-99ec-66c35079d0ef -> staff=f_staff_1 machine= start=2026-07-28T02:33:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 (step=sauce_pack) EarliestStart → 03:18
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 -> staff=f_staff_2 machine= start=2026-07-28T03:18:42+07:00
+   -> [SỰ CỐ 2] Máy nướng Grill A cháy (lúc 02:29)
+2026/07/28 00:53:42 Task a5485bce-6ada-4a8f-80bb-94b81c22b5ca failed at 02:29. Reason: Hỏng cảm biến
+2026/07/28 00:53:42 Machine m_grill_A marked as UNDER_MAINTENANCE
+2026/07/28 00:53:42 ReschedulePendingTasks triggered for node=factory_f at 02:29
+2026/07/28 00:53:42 Reschedule: reset 10 PENDING tasks to QUEUED. Dispatching...
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task eceb9782-746b-4188-8c91-73fb8045ce8f -> staff=f_staff_3 machine= start=2026-07-28T02:29:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE c22498b5-67de-4ed7-b562-f578f367bc24 (step=bun_bake) synced → start=02:34 end=02:49
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b4f142f4-c5d6-4693-8438-bfb88413e4c3 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T02:29:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd (step=bun_bake) synced → start=02:54 end=03:09
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 38fa3b7d-17a5-4bf4-86a2-3de6c428a40b -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T02:49:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 837c0a7b-a082-4284-b519-a4c38f269bf9 (step=patty_grill) synced → start=03:14 end=03:24
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a016f057-d691-48dc-8189-c0151943fe84 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T03:09:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task ac9b053f-117a-4913-b520-82be403d12a0 -> staff=f_staff_3 machine=m_grill_A start=2026-07-28T02:49:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c22498b5-67de-4ed7-b562-f578f367bc24 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T02:43:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T02:54:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 837c0a7b-a082-4284-b519-a4c38f269bf9 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T03:14:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=03:14 idleEnd=03:24 window=10m0s
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:34 idleEnd=02:49 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=02:54 idleEnd=03:09 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:33 idleEnd=02:43 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_2 != staffID=f_staff_3
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_1 != staffID=f_staff_3
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 701ae84a-1a80-47b5-99ec-66c35079d0ef -> staff=f_staff_3 machine= start=2026-07-28T03:09:42+07:00
+2026/07/28 00:53:42 dispatcher.cascadeEarliestStart: pushed task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 (step=sauce_pack) EarliestStart → 03:54
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 -> staff=f_staff_1 machine= start=2026-07-28T03:54:42+07:00
+   -> [SỰ CỐ 3] Sauce Mix trễ tiếp 20 phút (lúc 04:14)
+2026/07/28 00:53:42 Drift detected for task 701ae84a-1a80-47b5-99ec-66c35079d0ef: 20m (Scheduled: 03:54, Actual: 04:14)
+2026/07/28 00:53:42 ReschedulePendingTasks triggered for node=factory_f at 04:14
+2026/07/28 00:53:42 Reschedule: reset 9 PENDING tasks to QUEUED. Dispatching...
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task eceb9782-746b-4188-8c91-73fb8045ce8f -> staff=f_staff_2 machine= start=2026-07-28T04:14:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE c22498b5-67de-4ed7-b562-f578f367bc24 (step=bun_bake) synced → start=04:19 end=04:34
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task b4f142f4-c5d6-4693-8438-bfb88413e4c3 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T04:14:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd (step=bun_bake) synced → start=04:39 end=04:54
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 38fa3b7d-17a5-4bf4-86a2-3de6c428a40b -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T04:34:42+07:00
+2026/07/28 00:53:42 dispatcher.syncRetrieveAfterSetup: RETRIEVE 837c0a7b-a082-4284-b519-a4c38f269bf9 (step=patty_grill) synced → start=04:59 end=05:09
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task a016f057-d691-48dc-8189-c0151943fe84 -> staff=f_staff_3 machine=m_grill_B start=2026-07-28T04:54:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task ac9b053f-117a-4913-b520-82be403d12a0 -> staff=f_staff_2 machine=m_grill_A start=2026-07-28T04:34:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task c22498b5-67de-4ed7-b562-f578f367bc24 -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T04:19:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 1c402c83-aeb7-4ba6-94a6-bc2f100e23fd -> staff=f_staff_2 machine=m_grill_B start=2026-07-28T04:39:42+07:00
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 837c0a7b-a082-4284-b519-a4c38f269bf9 -> staff=f_staff_1 machine=m_grill_B start=2026-07-28T04:59:42+07:00
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=04:19 idleEnd=04:34 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=bun_bake idleStart=04:39 idleEnd=04:54 window=15m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=02:33 idleEnd=02:43 window=10m0s
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting bun_bake because AssignedTo=f_staff_1 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG: findFillInCandidate rejecting patty_grill because AssignedTo=f_staff_3 != staffID=f_staff_2
+2026/07/28 00:53:42 DEBUG assignFillInTasks: retrieve step=patty_grill idleStart=04:59 idleEnd=05:09 window=10m0s
+2026/07/28 00:53:42 dispatcher.Dispatch: assigned task 7008c9f1-cb09-4192-8a7f-6ad2b2c02107 -> staff=f_staff_2 machine= start=2026-07-28T04:54:42+07:00
+
+========== AFTER CHAOS MONKEY ==========
+T+9868 [02:28 -> 02:33] f_staff_3  : [FAILED  ] patty_grill     [m_grill_A]
+T+9974 [04:14 -> 04:34] f_staff_2  : [PENDING ] bun_mix        
+T+9974 [04:14 -> 04:19] f_staff_3  : [PENDING ] bun_bake        [m_grill_B]
+T+9979 [04:19 -> 04:34] f_staff_2  : [PENDING ] bun_bake        [m_grill_B]
+T+9994 [04:34 -> 02:43] f_staff_2  : [PENDING ] patty_grill     [m_grill_A]
+T+9994 [04:34 -> 04:39] f_staff_1  : [PENDING ] bun_bake        [m_grill_B]
+T+9999 [04:39 -> 04:54] f_staff_2  : [PENDING ] bun_bake        [m_grill_B]
+T+10014 [04:54 -> 04:59] f_staff_3  : [PENDING ] patty_grill     [m_grill_B]
+T+10014 [04:54 -> 05:14] f_staff_2  : [PENDING ] sauce_pack     
+T+10019 [04:59 -> 05:09] f_staff_1  : [PENDING ] patty_grill     [m_grill_B]
+==================================================
+✅ Case 3: Chaos Monkey OK. Xử lý 3 sự kiện liên hoàn không Deadlock. Initial tasks: 12, Final tasks: 12
+--- PASS: TestStress_Case3_ChaosMonkey (0.00s)
+FAIL
+FAIL	one-system-server/internal/usecase	0.597s
+FAIL

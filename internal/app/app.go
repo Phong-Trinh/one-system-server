@@ -98,7 +98,7 @@ func New(ctx context.Context) (*App, error) {
 	itemUC := usecase.NewItemUseCase(itemRepo)
 	allocationUC := usecase.NewAllocationUseCase(poRepo, batchRepo, machineRepo, sopRepo)
 
-	dispatcher := usecase.NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo)
+	dispatcher := usecase.NewDispatcher(shiftRepo, machineRepo, batchRepo, taskRepo, sopRepo, poRepo)
 	schedulingEngine := usecase.NewSchedulingEngine(poRepo, sopRepo, taskRepo, machineRepo, dispatcher)
 	allocationUC.SetSchedulingEngine(schedulingEngine, dispatcher)
 
