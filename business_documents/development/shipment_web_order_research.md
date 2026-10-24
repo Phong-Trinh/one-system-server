@@ -70,6 +70,75 @@ Khi khách đặt qua **GrabFood / ShopeeFood**, nền tảng lo hết phần gi
 2. **Phase 2:** Thêm **Lalamove** hoặc **GrabExpress** làm fallback. Tự động chuyển sang đơn vị khác khi không tìm được tài xế sau N phút.
 3. **Phase 3:** So giá (rate shopping) và/hoặc shipper nội bộ cho các store có mật độ đơn cao.
 
+### 3.5 So sánh giá cước xe máy nội thành (giá niêm yết công khai)
+
+| Đơn vị / gói | Giá mở cửa | Mỗi km tiếp theo | Nguồn / độ tin cậy |
+|---|---|---|---|
+| **Ahamove Siêu Tốc** | 15.709đ (≤2km) · 19.636đ (2–3km) | 5.400đ | Trang bảng giá chính thức |
+| **Ahamove Nhanh** (≤90 phút) | 13.745đ (≤2km) · 17.673đ (2–3km) | 4.320đ | Trang bảng giá chính thức |
+| **GrabExpress Ưu tiên/Siêu Tốc** (HN & HCM) | 19.636đ (2km) | 6.873đ | Trang dịch vụ Grab, Sapo (từ 28/02/2025) |
+| **GrabExpress Nhanh** (HCM) | 13.711đ (2km) | 4.742đ | Trang dịch vụ Grab (HN: 13.058đ / 4.516đ) |
+| **beDelivery tiêu chuẩn** (HCM) | 15.351đ (2km) | 5.015đ | Trang tổng hợp, cập nhật 06/2026 (HN: 16.067đ / 5.579đ) |
+| **Xanh Express Siêu tốc** | 14.000đ (2km) | 5.000đ | Giá lúc ra mắt 12/2023, **có thể đã đổi** |
+| **Lalamove xe máy** | từ ~13.500đ | không công bố rõ | Trang chính thức, phải xem báo giá trong app |
+
+**Cước ước tính theo quãng đường** (chưa gồm phụ phí và giá tăng giờ cao điểm):
+
+| Đơn vị / gói | 3 km | 5 km | 7 km |
+|---|---|---|---|
+| Ahamove Siêu Tốc | 19.636đ | 30.436đ | 41.236đ |
+| Ahamove Nhanh | 17.673đ | 26.313đ | 34.953đ |
+| GrabExpress Siêu Tốc | 26.509đ | 40.255đ | 54.001đ |
+| GrabExpress Nhanh (HCM) | 18.453đ | 27.937đ | 37.421đ |
+| beDelivery (HCM) | 20.366đ | 30.396đ | 40.426đ |
+| Xanh Express (giá 2023) | 19.000đ | 29.000đ | 39.000đ |
+
+**Nhận xét:**
+- Ở gói giao tức thời (siêu tốc), phù hợp đồ ăn nóng: **Ahamove rẻ hơn GrabExpress khoảng 25–30%** (5km: ~30k so với ~40k). beDelivery và Xanh Express ở mức tương đương Ahamove.
+- Gói "Nhanh" rẻ hơn nhưng cho phép giao trong 60–90 phút và có thể ghép đơn, **không phù hợp đồ chiên/nóng**. Chỉ nên dùng cho đồ uống đóng chai hoặc hàng khô.
+- Phụ phí cần tính thêm: đêm khuya (~10.000đ, khung 22h–6h), ngày lễ (~5.000đ), phí COD (be ~5.000đ), giá tăng khi mưa hoặc cao điểm. Giá thực tế luôn lấy theo báo giá tại thời điểm đặt.
+- Khi có hợp đồng doanh nghiệp, các hãng thường có chiết khấu theo sản lượng. Bảng trên là giá lẻ.
+- **Gợi ý định giá cho khách trên web:** đồng giá theo vùng (ví dụ ≤3km: 15k, 3–5km: 25k, 5–7km: 35k), hoặc freeship cho đơn trên X đồng. Phần chênh lệch là chi phí marketing. Cách này không phụ thuộc vào báo giá API, nên dùng được cả khi đặt Grab thủ công (§3.6).
+
+### 3.6 Chưa có pháp nhân: tự mở web và đặt Grab
+
+**Bối cảnh:** GrabExpress API là chương trình đối tác (OAuth2 client_credentials), cần ký hợp đồng với Grab. Thực tế thường yêu cầu pháp nhân công ty, nên **chưa thể tích hợp API Grab ngay**. Các lựa chọn:
+
+| Cách | Mô tả | Đánh giá |
+|---|---|---|
+| **A. Đặt Grab thủ công có hỗ trợ (assisted booking)** | Web nhận đơn, OneSystem tạo Shipment `provider=GRAB_EXPRESS, mode=MANUAL`. Màn hình handoff có các nút **Copy địa chỉ / SĐT / ghi chú / tiền COD** và nút mở Google Maps. Nhân viên đặt GrabExpress trên app Grab của cửa hàng, sau đó dán mã đơn Grab và biển số tài xế vào OneSystem, rồi bấm cập nhật trạng thái (Đã có tài xế → Đã lấy → Đã giao). | ✅ **Làm được ngay**, không cần API, không vi phạm điều khoản. ❌ Tốn 1–2 phút thao tác mỗi đơn, trạng thái không tự động, dễ sai sót giờ cao điểm. Phù hợp khi **< 20–30 đơn web/ngày/store**. |
+| **B. Deep link mở sẵn app Grab** | Bấm nút là mở app Grab với địa chỉ điền sẵn | ⚠️ Grab **không công bố** deep link điền sẵn điểm lấy/giao cho GrabExpress. Không nên dựa vào. |
+| **C. Bot / tự động hoá app Grab** (gọi API nội bộ của app, RPA trên điện thoại) | Giả lập người dùng để đặt tự động | ❌ **Không khuyến nghị**: vi phạm điều khoản sử dụng, có nguy cơ khoá tài khoản, hỏng mỗi khi app cập nhật. |
+| **D. Qua đơn vị trung gian** (Ichiba/Ship4P, Haravan Ship, Goship…) | Họ đã có hợp đồng với Grab và nhiều hãng khác. Mình chỉ tích hợp một API của họ | 🟡 Có thể tiếp cận Grab mà không cần hợp đồng trực tiếp, đổi lại có thêm phí trung gian và phụ thuộc bên thứ ba. **Cần hỏi** họ có yêu cầu pháp nhân không. |
+| **E. Ahamove API (tài khoản cá nhân)** | Form tích hợp của Ahamove ghi rõ **cá nhân có thể đăng ký** nếu không đại diện công ty. Quy trình: nhận key staging, được duyệt, rồi nhận key production | ✅ **Tự động hoàn toàn ngay từ đầu** (quote, book, webhook), giá rẻ hơn Grab ở gói siêu tốc. Cần xác nhận lại với Ahamove xem form hiện hành có bắt buộc tên công ty không. |
+
+**Khuyến nghị khi chưa có pháp nhân:**
+
+1. **Kênh chính: Ahamove API**. Tự động hoá, rẻ hơn, và đăng ký cá nhân được. Đây là adapter `AHAMOVE` trong §4.4.
+2. **Kênh dự phòng: Grab thủ công (cách A)**. Dùng khi Ahamove không tìm được tài xế hoặc khách yêu cầu. Chính là adapter `MANUAL` đã có trong thiết kế, chỉ cần thêm trường `provider` để báo cáo phân biệt Grab, be, Xanh…
+3. Khi đã có công ty, ký GrabExpress API và **chỉ cần thêm một adapter**. Luồng nghiệp vụ, model `Shipment` và màn hình đều giữ nguyên. Đây là lợi ích của thiết kế adapter ở §4.4.
+
+**Thiết kế màn hình đặt Grab thủ công (cách A):**
+
+```
+┌ Đơn #W-1042 · Giao hàng · Món xong dự kiến 11:42 ───────────────┐
+│ Nên đặt tài xế lúc: 11:34 (còn 3 phút)          [⏰ nhắc]       │
+│ Người nhận: Nguyễn A  [Copy SĐT]                                │
+│ Địa chỉ: 12 Lê Lợi, Q1  [Copy] [Mở Maps]   Ghi chú: [Copy]      │
+│ Thu hộ (COD): 0đ (đã thanh toán online)                          │
+│ ─ Sau khi đặt trên app Grab ─                                    │
+│ Mã đơn Grab: [__________]  Biển số: [_______]  Phí thực tế: [___]│
+│ [Đã có tài xế]  [Tài xế đã lấy]  [Đã giao]  [Huỷ / đặt lại]     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Hệ thống vẫn dùng ETA từ Scheduler để **nhắc nhân viên đặt đúng lúc**, nên giữ được lợi thế "just-in-time" ở §4.5 dù đặt bằng tay.
+
+**Lưu ý pháp lý khác khi tự bán qua web** (cần xác minh với kế toán hoặc luật sư):
+- Website bán hàng TMĐT thường phải **thông báo với Bộ Công Thương** (online.gov.vn).
+- Cổng thanh toán (VNPay, ZaloPay, MoMo doanh nghiệp) thường yêu cầu đăng ký kinh doanh. Nếu chưa có thì tạm dùng **chuyển khoản VietQR + đối soát** hoặc COD.
+- **Hộ kinh doanh** có thể là bước trung gian rẻ và nhanh hơn thành lập công ty, đủ cho nhiều dịch vụ (cần kiểm tra từng hãng).
+
 ---
 
 ## 4. Thiết kế đề xuất
@@ -271,6 +340,8 @@ book_at = estimated_ready_at − driver_lead_time(store, provider, khung giờ)
 
 - Ahamove Developer docs: https://developers.ahamove.com/docs/introduction · Create Order: https://developers.ahamove.com/docs/sample-test-case/create-order · Webhook: https://developers-stg.ahamove.com/en/docs/webhook
 - Lalamove Developers: https://developers.lalamove.com/ · v3 Tutorial: https://developers.lalamove.com/files/v3_Tutorial.pdf · Lalamove VN API: https://www.lalamove.com/en-vn/business/api-solutions
+- Giá cước: Ahamove https://ahamove.com/service/aha-delivery/price · Grab https://www.grab.com/vn/en/blog/bang-thong-tin-cac-dich-vu-tren-ung-dung-grab/ · Sapo https://www.sapo.vn/blog/top-don-vi-giao-hang-trong-ngay · beDelivery https://fpt.vn/tin-tuc/bedelivery-la-gi-huong-dan-giao-hang-va-cuoc-phi-moi-nhat-14562.html · Xanh Express https://cafebiz.vn/dich-vu-giao-hang-cua-xanh-sm-chinh-thuc-hoat-dong-gia-cuoc-14000-dong-cho-2km-dau-tien-5000-dong-moi-km-tiep-theo-176231202124059593.chn · https://www.xanhsm.com/news/so-tay-van-hanh-dich-vu-giao-hang-xanh-express · Lalamove https://www.lalamove.com/vi-vn/bang-gia-giao-hang
+- Ahamove tài khoản tích hợp (cho phép cá nhân): https://ahamove.com/intergration-account · Ichiba GrabExpress: https://ichiba.vn/products/integrations/grabexpress
 - GrabExpress API (nguồn không chính thức): https://apis.io/apis/grab/grab-grabexpress-api/ · Odoo connector tham khảo: https://apps.odoo.com/apps/modules/17.0/tangerine_delivery_grab
 
 > Lưu ý: payload webhook và danh sách trạng thái cụ thể của từng provider cần xác minh lại trên tài liệu chính thức hoặc sandbox khi bắt đầu tích hợp. Môi trường nghiên cứu lần này không truy cập được trực tiếp trang docs.
