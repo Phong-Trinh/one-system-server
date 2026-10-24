@@ -112,6 +112,8 @@ Khi khách đặt qua **GrabFood / ShopeeFood**, nền tảng lo hết phần gi
 | **D. Qua đơn vị trung gian** (Ichiba/Ship4P, Haravan Ship, Goship…) | Họ đã có hợp đồng với Grab và nhiều hãng khác. Mình chỉ tích hợp một API của họ | 🟡 Có thể tiếp cận Grab mà không cần hợp đồng trực tiếp, đổi lại có thêm phí trung gian và phụ thuộc bên thứ ba. **Cần hỏi** họ có yêu cầu pháp nhân không. |
 | **E. Ahamove API (tài khoản cá nhân)** | Form tích hợp của Ahamove ghi rõ **cá nhân có thể đăng ký** nếu không đại diện công ty. Quy trình: nhận key staging, được duyệt, rồi nhận key production | ✅ **Tự động hoàn toàn ngay từ đầu** (quote, book, webhook), giá rẻ hơn Grab ở gói siêu tốc. Cần xác nhận lại với Ahamove xem form hiện hành có bắt buộc tên công ty không. |
 
+| **F. AI Agent đặt hộ trên GrabExpress Web** | GrabExpress đã có **giao diện web** (express.grab.com/vi, đăng nhập bằng SĐT + OTP, cá nhân dùng được). Một agent điều khiển trình duyệt thật (Playwright + LLM), thao tác trên giao diện **y như nhân viên** | ✅ Tự động gần hoàn toàn, không cần API, không cần pháp nhân, không đụng tới API nội bộ của Grab. Xem thiết kế ở §3.7 |
+
 **Khuyến nghị khi chưa có pháp nhân:**
 
 1. **Kênh chính: Ahamove API**. Tự động hoá, rẻ hơn, và đăng ký cá nhân được. Đây là adapter `AHAMOVE` trong §4.4.
@@ -133,6 +135,50 @@ Khi khách đặt qua **GrabFood / ShopeeFood**, nền tảng lo hết phần gi
 ```
 
 Hệ thống vẫn dùng ETA từ Scheduler để **nhắc nhân viên đặt đúng lúc**, nên giữ được lợi thế "just-in-time" ở §4.5 dù đặt bằng tay.
+
+### 3.7 Thiết kế Grab Booking Agent (cách F)
+
+**Ý tưởng:** agent đóng vai một nhân viên ngồi trước máy tính của quán. Nó mở GrabExpress Web, điền thông tin, đọc giá, đặt đơn, theo dõi, rồi báo kết quả về OneSystem.
+
+```
+OneSystem                        Booking Agent (chạy trên PC/mini-PC tại quán)
+─────────                        ─────────────────────────────────────────────
+Shipment PENDING_BOOKING  ──►    1. Nhận job (poll hoặc webhook) đến giờ book_at
+(book_at, địa chỉ, SĐT,          2. Mở Chrome (profile đã đăng nhập sẵn) → express.grab.com
+ tên, ghi chú, giá trần)         3. Điểm lấy = địa chỉ đã lưu của quán
+                                 4. Điểm giao: gõ địa chỉ → chọn gợi ý khớp (đối chiếu quận/toạ độ)
+                                 5. Điền người nhận, SĐT, ghi chú, chọn gói Siêu Tốc
+                                 6. Đọc giá báo → giá ≤ giá trần? ──không──► hỏi nhân viên
+                                 7. Bấm Đặt → chụp màn hình → lấy mã đơn
+          ◄── POST /shipments/:id/agent-events (SEARCHING, mã đơn, giá, ảnh)
+                                 8. Cứ 1–2 phút xem trang đơn: tài xế, biển số, trạng thái
+          ◄── DRIVER_ASSIGNED / PICKED_UP / DELIVERED / CANCELLED
+```
+
+**Công nghệ:**
+- **Playwright** (Chromium ở chế độ có giao diện, **persistent profile** để giữ phiên đăng nhập).
+- Dùng **kịch bản cố định cho các bước ổn định** (mở trang, bấm nút đã biết) và **LLM (Claude với ảnh chụp màn hình hoặc cây accessibility) cho bước khó**: chọn đúng gợi ý địa chỉ, đọc giá, và tự sửa khi Grab đổi giao diện. Với 5 đơn/ngày, có thể dùng hẳn LLM agent cho toàn bộ luồng cho đơn giản, chi phí token nhỏ (nên đo thực tế trong tuần đầu).
+- Chạy **trên máy tại quán** thay vì trên cloud: cùng IP và thiết bị quen thuộc, nhân viên nhập OTP khi phiên hết hạn, và xem được agent đang làm gì.
+- Trong OneSystem đây là adapter `GRAB_EXPRESS_AGENT`. Nó cài đúng interface `ShippingProvider` ở §4.4 nhưng chạy bất đồng bộ (job queue + event callback).
+
+**Rào chắn an toàn (bắt buộc):**
+
+| Rủi ro | Biện pháp |
+|---|---|
+| Đặt trùng 2 tài xế | Idempotency theo `shipment_id`. Trước khi bấm Đặt, kiểm tra lịch sử đơn trên web Grab xem đã có đơn cùng SĐT người nhận trong 30 phút gần nhất chưa |
+| Chọn sai địa chỉ gợi ý | So khớp quận/phường hoặc khoảng cách với toạ độ geocode của OneSystem. Lệch quá 300m thì dừng và hỏi nhân viên |
+| Giá tăng đột biến | Giá trần cho mỗi đơn (ví dụ phí ước tính × 1,3). Vượt trần thì hỏi nhân viên |
+| Phiên đăng nhập hết hạn / cần OTP | Agent không tự xử lý OTP. Nó báo nhân viên đăng nhập lại, rồi tiếp tục |
+| Grab đổi giao diện | LLM tự thích nghi. Nếu thất bại 2 lần thì chuyển sang chế độ đặt tay (cách A) và cảnh báo |
+| Không tìm được tài xế | Sau N phút thì huỷ và đặt lại, hoặc chuyển sang Ahamove |
+| Không rõ agent đã làm gì | Lưu ảnh chụp màn hình và log từng bước vào `Shipment.Events` |
+
+**Lộ trình bật dần quyền tự chủ:**
+1. **Tuần 1–2, "điền sẵn":** agent điền mọi thứ, **nhân viên bấm Đặt**. Đo tỉ lệ điền đúng.
+2. **"Tự đặt có trần":** agent tự bấm Đặt nếu giá ≤ trần và địa chỉ khớp. Các trường hợp còn lại hỏi người.
+3. **"Tự động hoàn toàn":** thêm theo dõi trạng thái, tự đặt lại khi tài xế huỷ.
+
+**Lưu ý:** điều khoản sử dụng của Grab có thể có quy định về việc dùng công cụ tự động trên tài khoản. Ở quy mô ~5 đơn/ngày, đặt theo nhịp như người thật, rủi ro thực tế thấp, nhưng vẫn **nên dùng một tài khoản Grab riêng cho việc giao hàng**, tách khỏi tài khoản merchant GrabFood của quán.
 
 **Lưu ý pháp lý khác khi tự bán qua web** (cần xác minh với kế toán hoặc luật sư):
 - Website bán hàng TMĐT thường phải **thông báo với Bộ Công Thương** (online.gov.vn).
@@ -341,6 +387,7 @@ book_at = estimated_ready_at − driver_lead_time(store, provider, khung giờ)
 - Ahamove Developer docs: https://developers.ahamove.com/docs/introduction · Create Order: https://developers.ahamove.com/docs/sample-test-case/create-order · Webhook: https://developers-stg.ahamove.com/en/docs/webhook
 - Lalamove Developers: https://developers.lalamove.com/ · v3 Tutorial: https://developers.lalamove.com/files/v3_Tutorial.pdf · Lalamove VN API: https://www.lalamove.com/en-vn/business/api-solutions
 - Giá cước: Ahamove https://ahamove.com/service/aha-delivery/price · Grab https://www.grab.com/vn/en/blog/bang-thong-tin-cac-dich-vu-tren-ung-dung-grab/ · Sapo https://www.sapo.vn/blog/top-don-vi-giao-hang-trong-ngay · beDelivery https://fpt.vn/tin-tuc/bedelivery-la-gi-huong-dan-giao-hang-va-cuoc-phi-moi-nhat-14562.html · Xanh Express https://cafebiz.vn/dich-vu-giao-hang-cua-xanh-sm-chinh-thuc-hoat-dong-gia-cuoc-14000-dong-cho-2km-dau-tien-5000-dong-moi-km-tiep-theo-176231202124059593.chn · https://www.xanhsm.com/news/so-tay-van-hanh-dich-vu-giao-hang-xanh-express · Lalamove https://www.lalamove.com/vi-vn/bang-gia-giao-hang
+- GrabExpress Web: https://www.grab.com/vn/blog/grabexpress-da-co-giao-dien-web/ · https://www.grab.com/vn/blog/dat-giao-hang-qua-website-tien-loi-gia-hoi-voi-uu-dai-den-150k/
 - Ahamove tài khoản tích hợp (cho phép cá nhân): https://ahamove.com/intergration-account · Ichiba GrabExpress: https://ichiba.vn/products/integrations/grabexpress
 - GrabExpress API (nguồn không chính thức): https://apis.io/apis/grab/grab-grabexpress-api/ · Odoo connector tham khảo: https://apps.odoo.com/apps/modules/17.0/tangerine_delivery_grab
 
