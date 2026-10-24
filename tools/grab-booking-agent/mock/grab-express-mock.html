@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>GrabExpress (mock)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; color: #1c1c1c; }
+  h1 { color: #00b14f; font-size: 22px; }
+  label { display: block; margin-top: 14px; font-weight: 600; font-size: 14px; }
+  input, select, textarea { width: 100%; padding: 8px; font-size: 15px; box-sizing: border-box; }
+  #suggestions { border: 1px solid #ddd; margin: 0; padding: 0; list-style: none; }
+  #suggestions li { padding: 8px; cursor: pointer; border-bottom: 1px solid #eee; }
+  #suggestions li:hover { background: #f0fff5; }
+  .service { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .service input { width: auto; }
+  button { margin-top: 18px; padding: 10px 18px; font-size: 16px; background: #00b14f; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+  button:disabled { background: #9ad8b4; cursor: not-allowed; }
+  .hidden { display: none; }
+  #status { margin-top: 18px; padding: 12px; background: #f6f6f6; border-radius: 6px; }
+</style>
+</head>
+<body>
+<!-- Local stand-in for express.grab.com used to exercise the agent offline.
+     It mimics the flow, not the real markup: the agent must not depend on it. -->
+<h1>GrabExpress — Giao hàng</h1>
+
+<section id="login" class="hidden">
+  <p>Vui lòng đăng nhập để tiếp tục.</p>
+  <label for="phone-login">Số điện thoại</label>
+  <input id="phone-login" placeholder="Nhập số điện thoại">
+  <label for="otp">Mã OTP</label>
+  <input id="otp" placeholder="Nhập mã OTP">
+  <button id="login-btn" type="button">Đăng nhập</button>
+</section>
+
+<section id="booking" class="hidden">
+  <label>Điểm lấy hàng</label>
+  <select id="pickup" aria-label="Điểm lấy hàng">
+    <option>SnapBite Store 1 — 45 Nguyễn Huệ, Phường Bến Nghé, Quận 1</option>
+  </select>
+
+  <label for="dropoff">Điểm giao hàng</label>
+  <input id="dropoff" placeholder="Nhập địa chỉ giao hàng" autocomplete="off">
+  <ul id="suggestions"></ul>
+
+  <label for="recipient">Tên người nhận</label>
+  <input id="recipient" placeholder="Tên người nhận">
+  <label for="recipient-phone">Số điện thoại người nhận</label>
+  <input id="recipient-phone" placeholder="Số điện thoại người nhận">
+  <label for="note">Ghi chú cho tài xế</label>
+  <textarea id="note" rows="2" placeholder="Ghi chú cho tài xế"></textarea>
+
+  <div id="services" class="hidden">
+    <label>Dịch vụ</label>
+    <div class="service"><input type="radio" name="svc" id="svc-fast" value="Siêu Tốc"><label for="svc-fast" style="margin:0;font-weight:400">Siêu Tốc — <span id="price-fast"></span></label></div>
+    <div class="service"><input type="radio" name="svc" id="svc-std" value="Nhanh"><label for="svc-std" style="margin:0;font-weight:400">Nhanh — <span id="price-std"></span></label></div>
+  </div>
+
+  <label for="payment">Thanh toán</label>
+  <select id="payment" aria-label="Thanh toán">
+    <option>Tiền mặt - người gửi trả</option>
+    <option>Tiền mặt - người nhận trả</option>
+    <option>Thẻ / Ví</option>
+  </select>
+
+  <p>Tổng cước: <strong id="total">—</strong></p>
+  <button id="book" type="button" disabled>Đặt đơn</button>
+</section>
+
+<section id="status" class="hidden"></section>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
+  const ADDRESSES = [
+    { text: "12 Lê Lợi, Phường Bến Nghé, Quận 1, Hồ Chí Minh", km: 1.4 },
+    { text: "12 Lê Lợi, Phường 4, Gò Vấp, Hồ Chí Minh", km: 7.8 },
+    { text: "12 Lê Lai, Phường Bến Thành, Quận 1, Hồ Chí Minh", km: 1.9 },
+    { text: "120 Lê Lợi, Phường Bến Thành, Quận 1, Hồ Chí Minh", km: 2.6 },
+  ];
+  // Grab public tariff (2025): Siêu Tốc 19.636đ/2km + 6.873đ/km; Nhanh HCM 13.711đ/2km + 4.742đ/km.
+  const fee = (base, perKm, km) => Math.round(base + Math.max(0, Math.ceil(km) - 2) * perKm);
+
+  if (params.get("login") === "1" && !sessionStorage.getItem("loggedIn")) $("login").classList.remove("hidden");
+  else $("booking").classList.remove("hidden");
+
+  $("login-btn").onclick = () => {
+    if ($("otp").value.trim() === "123456") {
+      sessionStorage.setItem("loggedIn", "1");
+      $("login").classList.add("hidden");
+      $("booking").classList.remove("hidden");
+    } else alert("OTP không đúng");
+  };
+
+  let chosen = null;
+  let debounce;
+  $("dropoff").addEventListener("input", (e) => {
+    chosen = null;
+    $("services").classList.add("hidden");
+    update();
+    const q = e.target.value.toLowerCase();
+    $("suggestions").innerHTML = "";
+    clearTimeout(debounce);
+    if (q.length < 3) return;
+    debounce = setTimeout(() => {
+      $("suggestions").innerHTML = "";
+      for (const a of ADDRESSES.filter((a) => a.text.toLowerCase().includes(q.split(",")[0].trim()))) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = a.text;
+        li.onclick = () => pick(a);
+        $("suggestions").appendChild(li);
+      }
+    }, 400);
+  });
+
+  function pick(a) {
+    chosen = a;
+    $("dropoff").value = a.text;
+    $("suggestions").innerHTML = "";
+    $("price-fast").textContent = fmt(fee(19636, 6873, a.km));
+    $("price-std").textContent = fmt(fee(13711, 4742, a.km));
+    $("services").classList.remove("hidden");
+    update();
+  }
+
+  document.querySelectorAll("input[name=svc]").forEach((r) => (r.onchange = update));
+  ["recipient", "recipient-phone"].forEach((id) => $(id).addEventListener("input", update));
+
+  function update() {
+    const svc = document.querySelector("input[name=svc]:checked");
+    if (chosen && svc) {
+      const price = svc.id === "svc-fast" ? fee(19636, 6873, chosen.km) : fee(13711, 4742, chosen.km);
+      $("total").textContent = fmt(price);
+    } else $("total").textContent = "—";
+    $("book").disabled = !(chosen && svc && $("recipient").value && $("recipient-phone").value);
+  }
+
+  $("book").onclick = () => {
+    const id = "GE-VN-" + Math.floor(100000 + Math.random() * 900000);
+    window.__mockBookings = (window.__mockBookings || 0) + 1;
+    $("booking").classList.add("hidden");
+    $("status").classList.remove("hidden");
+    $("status").innerHTML = `<p><strong>Mã đơn: ${id}</strong></p><p id="state">Đang tìm tài xế…</p>
+      <p>Giao tới: ${chosen.text}</p><p>Cước: ${$("total").textContent}</p>`;
+    setTimeout(() => {
+      $("state").textContent = "Đã có tài xế: Trần Văn B · 59X1-123.45 · đang đến điểm lấy hàng";
+    }, 3000);
+  };
+</script>
+</body>
+</html>

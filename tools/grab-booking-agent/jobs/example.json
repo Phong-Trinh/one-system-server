@@ -1,0 +1,13 @@
+{
+  "shipment_id": "SHP-DEMO-0001",
+  "order_ref": "W-1042",
+  "service": "Siêu Tốc",
+  "payment": "Tiền mặt - người gửi trả",
+  "max_fee": 35000,
+  "dropoff": {
+    "address": "12 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+    "match_tokens": ["12", "Lê Lợi", "Bến Nghé", "Quận 1"]
+  },
+  "recipient": { "name": "Nguyễn Văn A", "phone": "0901234567" },
+  "driver_note": "Đơn đồ ăn W-1042, gọi trước khi tới. Cầm thẳng, không nghiêng."
+}

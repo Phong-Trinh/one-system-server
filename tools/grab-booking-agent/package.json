@@ -1,0 +1,16 @@
+{
+  "name": "grab-booking-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PoC: AI agent that books GrabExpress deliveries through the GrabExpress web UI, like a staff member would",
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "node --test test/*.test.js",
+    "start:mock": "node src/cli.js --mock --job jobs/example.json",
+    "login": "node src/cli.js --login"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0"
+  }
+}

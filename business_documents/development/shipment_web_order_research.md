@@ -178,6 +178,8 @@ Shipment PENDING_BOOKING  ──►    1. Nhận job (poll hoặc webhook) đế
 2. **"Tự đặt có trần":** agent tự bấm Đặt nếu giá ≤ trần và địa chỉ khớp. Các trường hợp còn lại hỏi người.
 3. **"Tự động hoàn toàn":** thêm theo dõi trạng thái, tự đặt lại khi tài xế huỷ.
 
+**PoC:** `tools/grab-booking-agent/` (Playwright + Claude, trang mock để test offline, rào chắn đặt đơn kiểm tra bằng code).
+
 **Lưu ý:** điều khoản sử dụng của Grab có thể có quy định về việc dùng công cụ tự động trên tài khoản. Ở quy mô ~5 đơn/ngày, đặt theo nhịp như người thật, rủi ro thực tế thấp, nhưng vẫn **nên dùng một tài khoản Grab riêng cho việc giao hàng**, tách khỏi tài khoản merchant GrabFood của quán.
 
 **Lưu ý pháp lý khác khi tự bán qua web** (cần xác minh với kế toán hoặc luật sư):
