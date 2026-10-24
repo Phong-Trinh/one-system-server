@@ -52,6 +52,10 @@ node src/cli.js --job jobs/example.json --mode auto   # tự đặt nếu qua h�
 
 Ảnh chụp từng bước nằm ở `runs/<shipment_id>-<timestamp>/`, trạng thái chống đặt trùng ở `state/`.
 
+Thêm `--record` để quay video cả phiên (file `.webm` trong cùng thư mục `runs/`). Ở chế độ này, hành động hiện tại hiện thành thanh chú thích dưới đáy trang và ô đang được thao tác có viền xanh. Video dùng để nhân viên/HQ xem lại agent đã làm gì với mỗi đơn. Thanh chú thích được loại khỏi phần đọc trang nên không ảnh hưởng đến các kiểm tra giá/địa chỉ.
+
+**Lần chạy thật đầu tiên (Claude Opus 5.5, trang mock):** 7 lượt gọi model, khoảng 32 giây, khoảng $0.05–0.06/đơn (phần lớn token được đọc từ cache).
+
 ### Định dạng job
 
 ```jsonc

@@ -29,25 +29,66 @@ const INTERACTIVE = [
 const MAX_TEXT = 4000;
 
 export class Browser {
-  constructor({ profileDir, headless = false, runDir }) {
+  // record: save a video of the session to runDir and show each action as a
+  // caption on the page, so staff can review what the agent did.
+  constructor({ profileDir, headless = false, runDir, record = false }) {
     this.profileDir = profileDir;
     this.headless = headless;
     this.runDir = runDir;
+    this.record = record;
     this.shot = 0;
   }
 
   async open(url) {
+    const viewport = { width: 1280, height: 860 };
     this.context = await chromium.launchPersistentContext(this.profileDir, {
       headless: this.headless,
       locale: "vi-VN",
-      viewport: { width: 1280, height: 860 },
+      viewport,
+      ...(this.record && { recordVideo: { dir: this.runDir, size: viewport } }),
     });
     this.page = this.context.pages()[0] ?? (await this.context.newPage());
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
   }
 
+  // Returns the recorded video path, if recording was on.
   async close() {
+    const video = this.page?.video();
     await this.context?.close();
+    return video ? video.path() : null;
+  }
+
+  // Caption overlay + outline on the element being acted on (record mode only).
+  async caption(text, ref) {
+    if (!this.record) return;
+    await this.page
+      .evaluate(
+        ({ text, ref }) => {
+          let box = document.getElementById("__agent_caption");
+          if (!box) {
+            box = document.createElement("div");
+            box.id = "__agent_caption";
+            box.style.cssText =
+              "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483647;padding:10px 14px;" +
+              "background:rgba(20,20,20,.88);color:#fff;font:15px/1.4 system-ui,sans-serif;border-radius:8px;pointer-events:none";
+            document.body.appendChild(box);
+          }
+          document.querySelectorAll("[data-agent-focus]").forEach((el) => {
+            el.style.outline = "";
+            el.removeAttribute("data-agent-focus");
+          });
+          const el = ref && document.querySelector(`[data-agent-ref="${ref}"]`);
+          const label = el && ((el.labels && el.labels[0]?.innerText) || el.innerText || el.placeholder || "").trim();
+          box.textContent = `🤖 ${text}${label ? ` → "${label.slice(0, 60)}"` : ""}`;
+          if (el) {
+            el.setAttribute("data-agent-focus", "");
+            el.style.outline = "3px solid #00b14f";
+          }
+        },
+        { text, ref },
+      )
+      .catch(() => {});
+    await this.page.waitForTimeout(700);
   }
 
   // Text view of the page: interactive elements with refs + visible text.
@@ -84,7 +125,12 @@ export class Browser {
           if (el.getAttribute("aria-selected") === "true") parts.push("selected");
           elements.push(parts.join(" "));
         }
-        return { elements, text: document.body.innerText.replace(/\n{3,}/g, "\n\n").slice(0, maxText) };
+        // The record-mode caption is ours, not the site's: keep it out of the text.
+        const caption = document.getElementById("__agent_caption");
+        if (caption) caption.style.display = "none";
+        const text = document.body.innerText.replace(/\n{3,}/g, "\n\n").slice(0, maxText);
+        if (caption) caption.style.display = "";
+        return { elements, text };
       },
       { selector: INTERACTIVE, maxText: MAX_TEXT },
     );
@@ -107,7 +153,11 @@ export class Browser {
       const values = [...document.querySelectorAll("input:not([type=hidden]):not([type=password]),textarea,select")]
         .filter((el) => el.getBoundingClientRect().width > 0 && el.value)
         .map((el) => (el.tagName === "SELECT" ? el.selectedOptions[0]?.text : el.value));
-      return `${document.body.innerText}\n${values.join("\n")}`;
+      const caption = document.getElementById("__agent_caption");
+      if (caption) caption.style.display = "none";
+      const text = document.body.innerText;
+      if (caption) caption.style.display = "";
+      return `${text}\n${values.join("\n")}`;
     });
   }
 

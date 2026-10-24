@@ -23,6 +23,7 @@ const { values: args } = parseArgs({
     mock: { type: "boolean", default: false },
     login: { type: "boolean", default: false },
     headless: { type: "boolean", default: false },
+    record: { type: "boolean", default: false },
   },
 });
 
@@ -51,7 +52,7 @@ for (const k of ["shipment_id", "max_fee"]) if (!job[k]) throw new Error(`job.${
 if (!job.dropoff?.match_tokens?.length) throw new Error("job.dropoff.match_tokens is required");
 
 const runDir = path.join(ROOT, "runs", `${job.shipment_id}-${Date.now()}`);
-const browser = new Browser({ profileDir, headless: args.headless, runDir });
+const browser = new Browser({ profileDir, headless: args.headless, runDir, record: args.record });
 try {
   await browser.open(url);
   const result = await runBookingAgent({
@@ -62,7 +63,7 @@ try {
     reporter: new OneSystemReporter(),
     mode: args.mode,
   });
-  console.log(`\nScreenshots: ${runDir}`);
+  console.log(`\nScreenshots${args.record ? " + video" : ""}: ${runDir}`);
   process.exitCode = result.outcome === "BOOKED" || result.outcome === "ALREADY_BOOKED" ? 0 : 1;
 } finally {
   await browser.close();

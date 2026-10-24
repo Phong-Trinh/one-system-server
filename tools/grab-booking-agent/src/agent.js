@@ -128,7 +128,12 @@ export async function runBookingAgent({
       fallbacks: "default",
     });
 
-    for (const b of response.content) if (b.type === "text" && b.text.trim()) log(`agent: ${b.text.trim()}`);
+    for (const b of response.content) {
+      if (b.type === "text" && b.text.trim()) {
+        log(`agent: ${b.text.trim()}`);
+        await browser.caption(b.text.trim());
+      }
+    }
 
     if (response.stop_reason === "refusal") {
       return finish({ outcome: "FAILED", notes: `model refused: ${response.stop_details?.explanation ?? ""}` });
@@ -147,6 +152,7 @@ export async function runBookingAgent({
     const results = [];
     for (const call of calls) {
       log(`→ ${call.name} ${JSON.stringify(call.input)}`);
+      await browser.caption(describe(call), call.input?.ref);
       if (call.name === "report_result") {
         return finish(call.input);
       }
@@ -205,6 +211,22 @@ async function confirmBooking({ input, job, browser, ledger, human, mode, log })
   await browser.clickBookingControl(input.ref);
   log(`  ✓ order button clicked (${input.quoted_price}đ)`);
   return "Order button clicked. Take a snapshot, read the Grab order ID, then call report_result.";
+}
+
+// Human-readable caption for record mode.
+function describe({ name, input = {} }) {
+  switch (name) {
+    case "snapshot": return "Đọc trang";
+    case "screenshot": return "Chụp màn hình";
+    case "click": return "Bấm";
+    case "type": return `Gõ "${input.text}" vào ô`;
+    case "press": return `Phím ${input.key}`;
+    case "wait": return `Chờ ${input.seconds} giây`;
+    case "confirm_booking": return `Xin đặt đơn: ${input.quoted_price}đ → ${input.dropoff_shown} (code đang kiểm tra)`;
+    case "ask_human": return `Hỏi nhân viên: ${input.question}`;
+    case "report_result": return `Kết quả: ${input.outcome} ${input.grab_order_id ?? ""}`;
+    default: return name;
+  }
 }
 
 // Only the fields the model needs; max_fee and match tokens stay in code.
