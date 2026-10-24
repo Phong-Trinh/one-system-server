@@ -170,3 +170,35 @@ test("prefill mode always asks staff before placing the order", async (t) => {
   assert.equal(human.questions.length, 1);
   assert.match(human.questions[0], /prefill/);
 });
+
+test("quote mode stops at the price and can never place an order", async (t) => {
+  const { browser, ledger } = await setup(t);
+  let offered;
+  let bookRef;
+  const steps = [
+    ...fillSteps(/option "12 Lê Lợi, Phường Bến Nghé/),
+    (s) => {
+      bookRef = ref(s, /button.*"Đặt đơn"/);
+      return [["click", { ref: bookRef }], ["confirm_booking", { ref: bookRef, quoted_price: 19636, dropoff_shown: "12 Lê Lợi" }]];
+    },
+    (r) => {
+      assert.match(r, /use confirm_booking/);
+      assert.match(r, /quote mode: placing an order is not allowed/);
+      return [["report_result", { outcome: "QUOTED", fee: 19636, notes: "Siêu Tốc 19.636đ, Nhanh 13.711đ" }]];
+    },
+  ];
+  const client = scriptedClient(steps);
+  const create = client.beta.messages.create;
+  client.beta.messages.create = async (p) => ((offered ??= p.tools.map((x) => x.name)), create(p));
+
+  const result = await runBookingAgent({
+    job: JOB, browser, ledger, human: new ScriptedHuman(), reporter: { report: async () => {} },
+    mode: "quote", client, log: () => {},
+  });
+
+  assert.equal(result.outcome, "QUOTED");
+  assert.equal(result.fee, 19636);
+  assert.ok(!offered.includes("confirm_booking"));
+  assert.equal(await browser.page.evaluate(() => window.__mockBookings ?? 0), 0);
+  assert.ok(!ledger.isBooked(JOB.shipment_id));
+});

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Usage:
 //   node src/cli.js --job jobs/example.json [--mode prefill|auto] [--url URL] [--headless]
+//   node src/cli.js --mode quote --job jobs/example.json [--pickup "..."] [--address "..."]
+//                             # stop at the price, never place an order
 //   node src/cli.js --login     # open the browser once so staff can log in with OTP
 
 import fs from "node:fs";
@@ -24,6 +26,8 @@ const { values: args } = parseArgs({
     login: { type: "boolean", default: false },
     headless: { type: "boolean", default: false },
     record: { type: "boolean", default: false },
+    pickup: { type: "string" },
+    address: { type: "string" },
   },
 });
 
@@ -42,14 +46,23 @@ if (!args.job) {
   console.error("missing --job <file>");
   process.exit(2);
 }
-if (!["prefill", "auto"].includes(args.mode)) {
-  console.error("--mode must be prefill or auto");
+if (!["prefill", "auto", "quote"].includes(args.mode)) {
+  console.error("--mode must be prefill, auto or quote");
   process.exit(2);
 }
 
 const job = JSON.parse(fs.readFileSync(args.job, "utf8"));
-for (const k of ["shipment_id", "max_fee"]) if (!job[k]) throw new Error(`job.${k} is required`);
-if (!job.dropoff?.match_tokens?.length) throw new Error("job.dropoff.match_tokens is required");
+if (args.pickup) job.pickup = { ...job.pickup, address: args.pickup }; // --pickup "" = store's saved address
+if (args.address) job.dropoff = { ...job.dropoff, address: args.address };
+if (args.mode === "quote") {
+  // Addresses can be given at demo time; nothing is booked, so no match tokens needed.
+  const human = new TerminalHuman();
+  if (args.pickup === undefined && !job.pickup?.address) job.pickup = { address: await human.ask("Địa chỉ lấy hàng (Enter = địa chỉ đã lưu):") || undefined };
+  if (!job.dropoff?.address) job.dropoff = { ...job.dropoff, address: await human.ask("Địa chỉ giao hàng:") };
+} else {
+  for (const k of ["shipment_id", "max_fee"]) if (!job[k]) throw new Error(`job.${k} is required`);
+  if (!job.dropoff?.match_tokens?.length) throw new Error("job.dropoff.match_tokens is required");
+}
 
 const runDir = path.join(ROOT, "runs", `${job.shipment_id}-${Date.now()}`);
 const browser = new Browser({ profileDir, headless: args.headless, runDir, record: args.record });
@@ -64,7 +77,7 @@ try {
     mode: args.mode,
   });
   console.log(`\nScreenshots${args.record ? " + video" : ""}: ${runDir}`);
-  process.exitCode = result.outcome === "BOOKED" || result.outcome === "ALREADY_BOOKED" ? 0 : 1;
+  process.exitCode = ["BOOKED", "ALREADY_BOOKED", "QUOTED"].includes(result.outcome) ? 0 : 1;
 } finally {
   await browser.close();
 }

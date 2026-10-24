@@ -1,0 +1,10 @@
+{
+  "shipment_id": "QUOTE-DEMO",
+  "order_ref": "DEMO",
+  "service": "Siêu Tốc",
+  "payment": "Tiền mặt - người gửi trả",
+  "pickup": {},
+  "dropoff": {},
+  "recipient": {},
+  "driver_note": ""
+}

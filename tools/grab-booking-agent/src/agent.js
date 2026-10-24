@@ -15,12 +15,13 @@ How to work:
 - Call snapshot to see the page. Elements are addressed by refs like "e12";
   refs change after every snapshot, so take a new snapshot after each action
   that changes the page. Use screenshot only when the text view is ambiguous.
-- Pickup is the store's saved address. For the dropoff, type the address, wait
+- Pickup: use the job's pickup_address if given, otherwise the store's saved
+  address. For pickup and dropoff, type the address, wait
   for suggestions, and pick the suggestion that matches the job's street,
   ward and district. If no suggestion clearly matches, call ask_human.
 - Fill recipient name, phone and driver note from the job. Choose the service
   named in the job. Choose the payment option named in the job.
-- Never invent data. Never change the pickup address. Never apply promo codes.
+- Never invent data. Never apply promo codes.
 - To place the order, call confirm_booking with the ref of the order button,
   the exact price shown for the selected service, and the dropoff address
   exactly as the page shows it. The click tool refuses that button by design.
@@ -29,6 +30,18 @@ How to work:
   driver and plate if already shown), then call report_result.
 - If something blocks you and a human cannot fix it, call report_result with
   outcome FAILED and explain why. Keep replies between tool calls short.`;
+
+// Quote mode: stop at the price. confirm_booking is not offered, and the
+// handler refuses it anyway (see runBookingAgent).
+const QUOTE_SYSTEM = `${SYSTEM}
+
+QUOTE MODE — this run must NOT place an order:
+- Fill pickup and dropoff, choose the service, and read the price the page shows.
+  Fill recipient fields only if the page will not show a price without them;
+  if it needs data the job does not have, call ask_human.
+- Then call report_result with outcome QUOTED, the fee for the job's service,
+  and in notes every service and price you saw plus the dropoff as shown.
+- Do not click the order button. There is no tool to place an order.`;
 
 const tool = (name, description, properties = {}, required = []) => ({
   name,
@@ -64,7 +77,7 @@ const TOOLS = [
     "report_result",
     "Finish the job and report the outcome to OneSystem.",
     {
-      outcome: { type: "string", enum: ["BOOKED", "FAILED"] },
+      outcome: { type: "string", enum: ["BOOKED", "QUOTED", "FAILED"] },
       grab_order_id: { type: "string" },
       fee: { type: "integer" },
       driver_name: { type: "string" },
@@ -85,7 +98,7 @@ export async function runBookingAgent({
   client = new Anthropic(),
   log = console.log,
 }) {
-  if (ledger.isBooked(job.shipment_id)) {
+  if (mode !== "quote" && ledger.isBooked(job.shipment_id)) {
     const prev = ledger.get(job.shipment_id);
     log(`shipment ${job.shipment_id} already booked (${prev.grab_order_id ?? "order id unknown"}), skipping`);
     return { ...prev, outcome: "ALREADY_BOOKED" };
@@ -111,15 +124,19 @@ export async function runBookingAgent({
     scroll: async ({ direction }) => (await browser.scroll(direction), "scrolled"),
     wait: async ({ seconds }) => (await browser.settle(seconds * 1000), "waited"),
     ask_human: async ({ question }) => `Staff answered: ${await human.ask(question)}`,
-    confirm_booking: async (input) => confirmBooking({ input, job, browser, ledger, human, mode, log }),
+    confirm_booking: async (input) => {
+      if (mode === "quote") throw new Error("quote mode: placing an order is not allowed");
+      return confirmBooking({ input, job, browser, ledger, human, mode, log });
+    },
   };
+  const tools = mode === "quote" ? TOOLS.filter((t) => t.name !== "confirm_booking") : TOOLS;
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
-      system: SYSTEM,
-      tools: TOOLS,
+      system: mode === "quote" ? QUOTE_SYSTEM : SYSTEM,
+      tools,
       messages,
       output_config: { effort: "medium" },
       cache_control: { type: "ephemeral" },
@@ -175,7 +192,8 @@ export async function runBookingAgent({
     // A click on the order button means Grab may have an order even if the
     // agent could not read its ID: escalate instead of reporting FAILED.
     const clicked = ledger.get(job.shipment_id)?.status === "BOOKING_CLICKED";
-    const outcome = result.outcome === "FAILED" && clicked ? "NEEDS_HUMAN" : result.outcome;
+    let outcome = result.outcome === "FAILED" && clicked ? "NEEDS_HUMAN" : result.outcome;
+    if (mode === "quote" && outcome === "BOOKED") outcome = "FAILED"; // cannot happen: no booking tool in quote mode
     const final = { ...result, outcome, shipment_id: job.shipment_id };
     if (outcome === "BOOKED") ledger.put(job.shipment_id, { status: "BOOKED", ...final });
     await browser.screenshot("final").catch(() => {});
@@ -186,7 +204,7 @@ export async function runBookingAgent({
 }
 
 async function confirmBooking({ input, job, browser, ledger, human, mode, log }) {
-  if (ledger.isBooked(job.shipment_id)) {
+  if (mode !== "quote" && ledger.isBooked(job.shipment_id)) {
     throw new Error("this shipment was already booked; do not book again, read the order ID instead");
   }
   const pageText = await browser.pageText();
@@ -235,6 +253,7 @@ function publicJob(job) {
     shipment_id: job.shipment_id,
     order_ref: job.order_ref,
     service: job.service,
+    pickup_address: job.pickup?.address,
     payment: job.payment,
     dropoff_address: job.dropoff.address,
     recipient_name: job.recipient.name,

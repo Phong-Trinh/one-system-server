@@ -50,6 +50,16 @@ node src/cli.js --job jobs/example.json         # mặc định --mode prefill: 
 node src/cli.js --job jobs/example.json --mode auto   # tự đặt nếu qua hết kiểm tra
 ```
 
+### Chỉ lấy báo giá (`--mode quote`)
+
+Agent điền điểm lấy, điểm giao, chọn dịch vụ, đọc giá rồi dừng, kết quả là `QUOTED`. Ở chế độ này **không thể đặt đơn**: tool `confirm_booking` không được đưa cho model, handler của nó từ chối, và `click` vẫn chặn nút đặt đơn. Địa chỉ có thể nhập lúc chạy:
+
+```bash
+node src/cli.js --mode quote --job jobs/quote.json --record \
+  --pickup "45 Nguyễn Huệ, Quận 1" --address "12 Lê Lợi, Phường Bến Nghé, Quận 1"
+# bỏ --pickup/--address thì CLI hỏi trong terminal; --pickup "" = dùng địa chỉ đã lưu của tài khoản
+```
+
 Ảnh chụp từng bước nằm ở `runs/<shipment_id>-<timestamp>/`, trạng thái chống đặt trùng ở `state/`.
 
 Thêm `--record` để quay video cả phiên (file `.webm` trong cùng thư mục `runs/`). Ở chế độ này, hành động hiện tại hiện thành thanh chú thích dưới đáy trang và ô đang được thao tác có viền xanh. Video dùng để nhân viên/HQ xem lại agent đã làm gì với mỗi đơn. Thanh chú thích được loại khỏi phần đọc trang nên không ảnh hưởng đến các kiểm tra giá/địa chỉ.
