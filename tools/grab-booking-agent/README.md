@@ -32,7 +32,7 @@ job (shipment) ──► Claude đọc trang (snapshot) ──► click / type /
 
 ## Chạy
 
-Yêu cầu: Node 20+, Playwright + Chromium (`npm i -g playwright && npx playwright install chromium` nếu máy chưa có), và biến môi trường `ANTHROPIC_API_KEY`.
+Yêu cầu: Node 20+, Chromium qua Playwright (trên máy mới: `npm install --no-save playwright && npx playwright install chromium` trong thư mục này), và biến môi trường `ANTHROPIC_API_KEY`.
 
 ```bash
 cd tools/grab-booking-agent
